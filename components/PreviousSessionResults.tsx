@@ -30,13 +30,13 @@ const PreviousSessionResults: React.FC<PreviousSessionResultsProps> = ({ matches
     
     return (
         <div className="h-full flex flex-col overflow-hidden bg-gray-950/40 px-6 py-4">
-            {/* Header - Fixed Height 10vh */}
-            <div className="h-[10vh] flex items-center justify-between border-b-4 border-blue-600 mb-2 shrink-0">
-                <h1 className="text-[5vh] font-black uppercase tracking-tighter text-white">
+            {/* Header - Fixed Height 80px */}
+            <div className="h-20 flex items-center justify-between border-b-4 border-blue-600 mb-2 shrink-0">
+                <h1 className="text-5xl font-black uppercase tracking-tighter text-white">
                     Résultats <span className="text-blue-500">(Session {sessionNumber})</span>
                 </h1>
                 {totalPages > 1 && (
-                    <div className="text-[2.5vh] text-blue-400 font-black bg-blue-900/30 px-6 py-2 rounded-full border-2 border-blue-500/50">
+                    <div className="text-2xl text-blue-400 font-black bg-blue-900/30 px-6 py-2 rounded-full border-2 border-blue-500/50">
                         Page {page + 1} / {totalPages}
                     </div>
                 )}
@@ -76,7 +76,7 @@ const PreviousSessionResults: React.FC<PreviousSessionResultsProps> = ({ matches
 
                             {/* Match Teams */}
                             <div className={`w-[63%] flex items-center px-6 gap-4 overflow-hidden`}>
-                                {category && <div style={{ backgroundColor: category.color }} className="w-[1.2vh] h-[50%] rounded-full flex-shrink-0 shadow-lg shadow-black/50"></div>}
+                                {category && <div style={{ backgroundColor: category.color }} className="w-2.5 h-[50%] rounded-full flex-shrink-0 shadow-lg shadow-black/50"></div>}
                                 <div className="flex-1 leading-none flex flex-col justify-center overflow-hidden">
                                     <div 
                                         className="font-black text-white uppercase tracking-tight leading-none"

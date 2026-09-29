@@ -97,12 +97,12 @@ const TVBracket: React.FC<TVBracketProps> = ({ category, finalMatches, teams }) 
     return (
         <div className="h-full flex flex-col overflow-hidden bg-gray-950/40 px-6 py-4">
             {/* Header */}
-            <div className="h-[10vh] flex items-center justify-between border-b-4 border-purple-600 mb-2 shrink-0">
-                <h1 className="text-[5vh] font-black uppercase tracking-tighter text-white">
+            <div className="h-20 flex items-center justify-between border-b-4 border-purple-600 mb-2 shrink-0">
+                <h1 className="text-5xl font-black uppercase tracking-tighter text-white">
                     {category.name} — <span className="text-purple-400">{roundNames[currentRound]}</span>
                 </h1>
                 {totalPages > 1 && (
-                    <div className="text-[2.5vh] text-purple-400 font-black bg-purple-900/30 px-6 py-2 rounded-full border-2 border-purple-500/50">
+                    <div className="text-2xl text-purple-400 font-black bg-purple-900/30 px-6 py-2 rounded-full border-2 border-purple-500/50">
                         Page {page + 1} / {totalPages}
                     </div>
                 )}

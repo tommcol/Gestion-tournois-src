@@ -27,7 +27,8 @@ const App: React.FC = () => {
     sessionStorage.setItem('admin_active_view', view);
     setActiveView(view);
   };
-  const { tournamentName } = useTournament().state;
+  const { state, isPreviewMode } = useTournament();
+  const { tournamentName } = state;
   
   // Gestion du mode TV et Court
   const [isTvMode, setIsTvMode] = useState(false);
@@ -106,6 +107,11 @@ const App: React.FC = () => {
   if (isTvMode) {
     return (
       <div className="relative h-screen w-screen overflow-hidden bg-black">
+        {isPreviewMode && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-amber-500/90 text-amber-950 font-bold px-4 py-1.5 rounded-full text-xs shadow-xl pointer-events-none border border-amber-300/50">
+            Mode aperçu : données sur ce navigateur uniquement ; tablettes et TV non synchronisées
+          </div>
+        )}
         <TVDisplay />
         {/* "Leurres" pour le son et la musique : supprimés si mode muet activé */}
         {!isMutedUrl && (
@@ -119,7 +125,7 @@ const App: React.FC = () => {
   }
 
   if (isCourtMode) {
-    if (!useTournament().state.enableCourtView) {
+    if (!state.enableCourtView) {
       return (
         <div className="flex flex-col items-center justify-center h-screen bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
           <div className="text-xl font-bold mb-2">Vue tablette non activée</div>
@@ -127,11 +133,33 @@ const App: React.FC = () => {
         </div>
       );
     }
-    return <CourtView courtNumber={courtNumber} />;
+    return (
+      <div className="flex flex-col h-screen">
+        {isPreviewMode && (
+          <div className="bg-amber-500/95 text-amber-950 font-bold px-4 py-1.5 text-xs sm:text-sm flex items-center justify-center gap-2 text-center shrink-0 z-30 shadow-md">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Mode aperçu : données sur ce navigateur uniquement ; tablettes et TV non synchronisées</span>
+          </div>
+        )}
+        <div className="flex-1 overflow-hidden">
+          <CourtView courtNumber={courtNumber} />
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-900 font-sans">
+      {isPreviewMode && (
+        <div className="bg-amber-500/95 text-amber-950 font-bold px-4 py-1.5 text-xs sm:text-sm flex items-center justify-center gap-2 text-center shrink-0 z-30 shadow-md border-b border-amber-600/30">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>Mode aperçu : données sur ce navigateur uniquement ; tablettes et TV non synchronisées</span>
+        </div>
+      )}
       <header className="bg-gray-900 text-white p-2 shadow-lg z-20 flex justify-between items-center shrink-0">
          {/* Left Section: Title and Mode Button - Can truncate */}
          <div className="flex items-center gap-3 pl-2 flex-1 min-w-0">

@@ -18,6 +18,31 @@ import { sponsorReducer } from './reducers/sponsorReducer';
 import { sessionReducer } from './reducers/sessionReducer';
 import { globalReducer } from './reducers/globalReducer';
 
+const STORAGE_KEY = 'tournament_preview_state';
+
+const loadLocalOrInitialData = async (): Promise<TournamentState> => {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+                return parsed;
+            }
+        }
+    } catch (e) {
+        console.warn('LocalStorage read error:', e);
+    }
+
+    try {
+        const fromIdb = await loadFromIndexedDB();
+        if (fromIdb) return fromIdb;
+    } catch (e) {
+        console.warn('IndexedDB read error:', e);
+    }
+
+    return initialData;
+};
+
 const saveTournamentState = async (newState: TournamentState) => {
     try {
         const response = await fetch('/save', {
@@ -29,11 +54,10 @@ const saveTournamentState = async (newState: TournamentState) => {
         const result = await response.json();
         
         if (!result.success) {
-            alert('⚠️ ERREUR : Impossible de sauvegarder les données du tournoi. Vérifiez l\'espace disque.');
+            console.warn('⚠️ Impossible de sauvegarder les données sur le serveur.');
         }
     } catch (error) {
-        alert('⚠️ ERREUR : Le serveur ne répond pas. Les données ne sont pas sauvegardées.');
-        console.error('Save error:', error);
+        console.warn('Save error (serveur non joignable):', error);
     }
 };
 
@@ -76,50 +100,66 @@ const TournamentContext = createContext<{
   emitAudioEvent: (data: any) => void;
   emitMusicCommand: (data: any) => void;
   isLoaded: boolean;
+  isPreviewMode: boolean;
   socket: Socket | null;
 } | undefined>(undefined);
 
 export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(tournamentReducer, initialState);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const lastReceivedStateRef = useRef<string>('');
   const isUpdatingFromSocket = useRef<boolean>(false);
 
-  // Initialize Socket.io
+  // Initialize Socket.io and Preview Mode fallback
   useEffect(() => {
-    // In production, we connect to the same host. In dev, we might need to specify the port if not using the proxy.
-    const socket = io();
+    let hasLoaded = false;
+    let fallbackTimer: any = null;
+
+    // Si aucun serveur n'est joignable sous 1.2s, on démarre en Mode Aperçu
+    fallbackTimer = setTimeout(async () => {
+      if (!hasLoaded) {
+        console.warn('Mode aperçu activé : serveur non joignable');
+        const localData = await loadLocalOrInitialData();
+        hasLoaded = true;
+        dispatch({ type: 'SET_STATE', payload: localData });
+        setIsPreviewMode(true);
+        setIsLoaded(true);
+      }
+    }, 1200);
+
+    const socket = io({
+      timeout: 3000,
+      reconnectionAttempts: 5,
+    });
     socketRef.current = socket;
 
-    socket.on('state_update', (newState: TournamentState) => {
-      const stateString = JSON.stringify(newState);
-      if (stateString !== lastReceivedStateRef.current) {
-        lastReceivedStateRef.current = stateString;
-        isUpdatingFromSocket.current = true;
-        dispatch({ type: 'SET_STATE', payload: newState });
+    socket.on('connect_error', async (err) => {
+      console.warn('Serveur non joignable (connect_error):', err.message);
+      if (!hasLoaded) {
+        if (fallbackTimer) clearTimeout(fallbackTimer);
+        const localData = await loadLocalOrInitialData();
+        hasLoaded = true;
+        dispatch({ type: 'SET_STATE', payload: localData });
+        setIsPreviewMode(true);
         setIsLoaded(true);
-        setTimeout(() => {
-          isUpdatingFromSocket.current = false;
-        }, 100);
       }
     });
 
-    // Fallback si le serveur n'a pas de state
     socket.on('connect', () => {
-      console.log('Connected to server');
-      // If we already have local state (e.g. from a previous session or just edited), 
-      // and the server hasn't sent anything yet, we should push our state to the server
-      // instead of waiting for a potentially empty state.
+      console.log('Connecté au serveur du PC (réseau local)');
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      setIsPreviewMode(false);
+
       setTimeout(async () => {
         setIsLoaded(prev => {
           if (!prev) {
-            // NOUVEAU : Essayer de récupérer depuis IndexedDB
+            hasLoaded = true;
             loadFromIndexedDB().then(savedState => {
               if (savedState) {
                 console.log('Récupération depuis IndexedDB après crash');
                 dispatch({ type: 'SET_STATE', payload: savedState });
-                // Pousser vers le serveur pour resynchroniser
                 socket.emit('update_state', savedState);
               } else {
                 console.log('Aucune donnée locale, démarrage à vide');
@@ -135,8 +175,23 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
       }, 2000);
     });
 
+    socket.on('state_update', (newState: TournamentState) => {
+      hasLoaded = true;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      setIsPreviewMode(false);
+      const stateString = JSON.stringify(newState);
+      if (stateString !== lastReceivedStateRef.current) {
+        lastReceivedStateRef.current = stateString;
+        isUpdatingFromSocket.current = true;
+        dispatch({ type: 'SET_STATE', payload: newState });
+        setIsLoaded(true);
+        setTimeout(() => {
+          isUpdatingFromSocket.current = false;
+        }, 100);
+      }
+    });
+
     socket.on('audio_event', (data) => {
-      // Dispatch a custom event that components can listen to
       window.dispatchEvent(new CustomEvent('tournament_audio_event', { detail: data }));
     });
 
@@ -145,27 +200,43 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
     });
 
     return () => {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       socket.disconnect();
     };
   }, []);
 
-  // Broadcast state changes to server
+  // Broadcast state changes to server or save locally in preview mode
   useEffect(() => {
-    if (!isLoaded || isUpdatingFromSocket.current || !socketRef.current) return;
+    if (!isLoaded || isUpdatingFromSocket.current) return;
     
     const currentStateString = JSON.stringify(state);
     if (currentStateString === lastReceivedStateRef.current) return;
 
-    socketRef.current.emit('update_state', state);
-    saveTournamentState(state);
-    
-    // NOUVEAU : Sauvegarde IndexedDB en parallèle (filet de sécurité)
-    saveToIndexedDB(state).catch(err => {
+    if (isPreviewMode || !socketRef.current?.connected) {
+      // Mode aperçu : enregistre les changements dans ce navigateur uniquement
+      try {
+        localStorage.setItem(STORAGE_KEY, currentStateString);
+      } catch (e) {
+        console.warn('LocalStorage save failed:', e);
+      }
+      saveToIndexedDB(state).catch(err => {
         console.warn('IndexedDB save failed:', err);
-    });
+      });
+    } else {
+      // Réseau local : quand le serveur du PC est joignable, conserve le fonctionnement actuel
+      socketRef.current.emit('update_state', state);
+      saveTournamentState(state);
+      
+      saveToIndexedDB(state).catch(err => {
+        console.warn('IndexedDB save failed:', err);
+      });
+      try {
+        localStorage.setItem(STORAGE_KEY, currentStateString);
+      } catch (e) {}
+    }
     
     lastReceivedStateRef.current = currentStateString;
-  }, [state, isLoaded]);
+  }, [state, isLoaded, isPreviewMode]);
 
   const emitAudioEvent = (data: any) => {
     socketRef.current?.emit('play_audio', data);
@@ -193,6 +264,7 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
       emitAudioEvent, 
       emitMusicCommand, 
       isLoaded,
+      isPreviewMode,
       socket: socketRef.current 
     }}>
       {children}

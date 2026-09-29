@@ -333,6 +333,23 @@ const TVDisplay: React.FC = () => {
     const showReferee = true;
     const showScorer = true;
 
+    const [scale, setScale] = useState(1);
+
+    useEffect(() => {
+        const updateScale = () => {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const targetW = 1920;
+            const targetH = 1080;
+            const s = Math.min(w / targetW, h / targetH);
+            setScale(s);
+        };
+
+        updateScale();
+        window.addEventListener('resize', updateScale);
+        return () => window.removeEventListener('resize', updateScale);
+    }, []);
+
     if (!isLoaded) {
         return (
             <div className="h-screen w-screen bg-black flex items-center justify-center text-white">
@@ -369,245 +386,233 @@ const TVDisplay: React.FC = () => {
     }
     
     return (
-         <div className="w-screen h-[100dvh] bg-slate-900 text-white overflow-hidden flex flex-col font-sans select-none">
-            {/* ZONE PRINCIPALE (HAUT) */}
-            <main className="flex-1 overflow-hidden relative">
-                <div className="w-full h-full">
-                        {viewMode === 'matches' && hasMatches ? (
-                            <div className="p-[3vh] h-full">
-                                {isFinalPhase ? (
-                                    <TVBracket 
-                                        category={finalPhaseCategories[pageIndex % finalPhaseCategories.length]}
-                                        finalMatches={allFinalMatches}
+         <div className="w-screen h-screen bg-black overflow-hidden flex items-center justify-center select-none">
+            <div 
+                style={{
+                    width: '1920px',
+                    height: '1080px',
+                    transform: `scale(${scale})`,
+                    transformOrigin: 'center center',
+                }}
+                className="bg-slate-900 text-white flex flex-col font-sans shrink-0 relative overflow-hidden shadow-2xl"
+            >
+                {/* ZONE PRINCIPALE (HAUT) */}
+                <main className="flex-1 overflow-hidden relative">
+                    <div className="w-full h-full">
+                            {viewMode === 'matches' && hasMatches ? (
+                                <div className="p-8 h-full">
+                                    {isFinalPhase ? (
+                                        <TVBracket 
+                                            category={finalPhaseCategories[pageIndex % finalPhaseCategories.length]}
+                                            finalMatches={allFinalMatches}
+                                            teams={teams}
+                                        />
+                                    ) : (
+                                        <NextSessionMatches 
+                                            key={`matches-session-${isCurrentSessionLaunched ? currentSession + 1 : currentSession}`} 
+                                            matches={[...displayMatches].sort((a,b) => (a.court || 99) - (b.court || 99)) as any} 
+                                            teams={teams} 
+                                            categories={categories} 
+                                            sessionNumber={isCurrentSessionLaunched ? currentSession + 1 : currentSession} 
+                                            getTeam={getTeam}
+                                            page={pageIndex}
+                                            showReferee={showReferee}
+                                            showScorer={showScorer}
+                                        />
+                                    )}
+                                </div>
+                            ) : viewMode === 'results' && hasResults ? (
+                                <div className="p-8 h-full">
+                                    <PreviousSessionResults 
+                                        key={`results-session-${resultsData.sessionNumber}`}
+                                        matches={[...resultsData.matches].sort((a,b) => (a.court || 99) - (b.court || 99)) as any}
                                         teams={teams}
-                                    />
-                                ) : (
-                                    <NextSessionMatches 
-                                        key={`matches-session-${isCurrentSessionLaunched ? currentSession + 1 : currentSession}`} 
-                                        matches={[...displayMatches].sort((a,b) => (a.court || 99) - (b.court || 99)) as any} 
-                                        teams={teams} 
-                                        categories={categories} 
-                                        sessionNumber={isCurrentSessionLaunched ? currentSession + 1 : currentSession} 
+                                        categories={categories}
+                                        sessionNumber={resultsData.sessionNumber}
                                         getTeam={getTeam}
                                         page={pageIndex}
-                                        showReferee={showReferee}
-                                        showScorer={showScorer}
                                     />
-                                )}
-                            </div>
-                        ) : viewMode === 'results' && hasResults ? (
-                            <div className="p-[3vh] h-full">
-                                <PreviousSessionResults 
-                                    key={`results-session-${resultsData.sessionNumber}`}
-                                    matches={[...resultsData.matches].sort((a,b) => (a.court || 99) - (b.court || 99)) as any}
-                                    teams={teams}
-                                    categories={categories}
-                                    sessionNumber={resultsData.sessionNumber}
-                                    getTeam={getTeam}
-                                    page={pageIndex}
-                                />
-                            </div>
-                        ) : viewMode === 'standings' && hasStandings ? (
-                            <div className="p-[3vh] h-full overflow-hidden">
-                                <TVStandings isFinal={isPoolStageOver} pageIndex={pageIndex} setPageIndex={setPageIndex} />
-                            </div>
-                        ) : viewMode === 'sponsor' && hasSponsors ? (
-                            <div className="h-full">
-                                <SponsorDisplay 
-                                    key={`sponsor-${sponsors[sponsorIndex % sponsors.length].id}`}
-                                    sponsor={sponsors[sponsorIndex % sponsors.length]} 
-                                />
-                            </div>
-                        ) : (
-                            <div className="flex items-center justify-center h-full">
-                                <div className="text-center">
-                                    <div className="bg-blue-500/20 px-[4vw] py-[2vh] rounded-full text-[2.5vh] text-blue-400 font-bold uppercase tracking-widest border border-blue-500/30">
-                                        Chargement du cycle...
+                                </div>
+                            ) : viewMode === 'standings' && hasStandings ? (
+                                <div className="p-8 h-full overflow-hidden">
+                                    <TVStandings isFinal={isPoolStageOver} pageIndex={pageIndex} setPageIndex={setPageIndex} />
+                                </div>
+                            ) : viewMode === 'sponsor' && hasSponsors ? (
+                                <div className="h-full">
+                                    <SponsorDisplay 
+                                        key={`sponsor-${sponsors[sponsorIndex % sponsors.length].id}`}
+                                        sponsor={sponsors[sponsorIndex % sponsors.length]} 
+                                    />
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-center h-full">
+                                    <div className="text-center">
+                                        <div className="bg-blue-500/20 px-12 py-6 rounded-full text-2xl text-blue-400 font-bold uppercase tracking-widest border border-blue-500/30">
+                                            Chargement du cycle...
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
-                </div>
-
-                {/* OVERLAY POUR TOURNOI NON DÉMARRÉ */}
-                {!isTournamentStarted && viewMode !== 'sponsor' && (
-                    <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl flex items-center justify-center z-50 p-[5vw]">
-                        <div className="text-center bg-slate-800/50 p-[5vh] rounded-[3vh] border border-white/10 shadow-2xl">
-                            <h1 className="text-[8vh] font-black mb-[2vh] tracking-tighter uppercase italic text-blue-500 leading-none">
-                                {state.tournamentName || "Tournoi Pro"}
-                            </h1>
-                            <div className="h-[2px] bg-gradient-to-r from-transparent via-blue-500 to-transparent w-full mb-[3vh]"></div>
-                            <p className="text-[3.5vh] text-slate-300 font-medium tracking-wide">Le tournoi n'a pas encore commencé</p>
-                        </div>
+                            )}
                     </div>
-                )}
 
-                {/* ICÔNE SON - Overlay haut droite */}
-                <div className="absolute top-[1.5vh] right-[1.5vh] z-50">
-                    <button
-                        onClick={toggleMute}
-                        className={`p-[1vh] rounded-full border transition-all ${
-                            isMuted
-                                ? 'bg-red-500/20 border-red-500/50 text-red-400'
-                                : 'bg-black/30 border-white/10 text-white/30 hover:text-white/60'
-                        }`}
-                        title={isMuted ? 'Réactiver le son' : 'Couper le son'}
-                    >
-                        {isMuted ? (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-[1.8vh] w-[1.8vh]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-                            </svg>
-                        ) : (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-[1.8vh] w-[1.8vh]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                            </svg>
-                        )}
-                    </button>
-                </div>
-
-                {isPreStarting && (
-                    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center"
-                        style={{ background: 'rgba(2,6,23,0.97)' }}
-                    >
-                        {/* Session */}
-                        <div style={{
-                            fontSize: '4vw',
-                            fontWeight: 900,
-                            color: 'white',
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.1em',
-                            marginBottom: '2vh',
-                        }}>
-                            Session {currentSession}
-                        </div>
-
-                        {/* Phrase partenaire */}
-                        <div style={{
-                            fontSize: '2.5vw',
-                            color: '#94a3b8',
-                            fontWeight: 600,
-                            marginBottom: '4vh',
-                            textAlign: 'center',
-                        }}>
-                            Avec notre partenaire
-                        </div>
-
-                        {/* Logo sponsor aléatoire */}
-                        {sponsors.length > 0 && sponsors[preStartSponsorIndex] && (
-                            <div style={{
-                                background: 'white',
-                                borderRadius: '1.5vw',
-                                padding: '3vh 4vw',
-                                maxWidth: '40vw',
-                                maxHeight: '30vh',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                            }}>
-                                <img
-                                    src={sponsors[preStartSponsorIndex].logo}
-                                    alt={sponsors[preStartSponsorIndex].name}
-                                    style={{ maxWidth: '100%', maxHeight: '25vh', objectFit: 'contain' }}
-                                />
+                    {/* OVERLAY POUR TOURNOI NON DÉMARRÉ */}
+                    {!isTournamentStarted && viewMode !== 'sponsor' && (
+                        <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl flex items-center justify-center z-50 p-16">
+                            <div className="text-center bg-slate-800/50 p-16 rounded-3xl border border-white/10 shadow-2xl">
+                                <h1 className="text-7xl font-black mb-6 tracking-tighter uppercase italic text-blue-500 leading-none">
+                                    {state.tournamentName || "Tournoi Pro"}
+                                </h1>
+                                <div className="h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent w-full mb-8"></div>
+                                <p className="text-3xl text-slate-300 font-medium tracking-wide">Le tournoi n'a pas encore commencé</p>
                             </div>
-                        )}
-
-                        {/* Si pas de sponsor */}
-                        {sponsors.length === 0 && (
-                            <div style={{ fontSize: '3vw', color: '#60a5fa', fontWeight: 900 }}>
-                                S.R.C Basket 🏀
-                            </div>
-                        )}
-                    </div>
-                )}
-            </main>
-
-            {/* PIED DE PAGE TV (BAS) */}
-            <footer className="h-[10vh] bg-black border-t border-white/5 flex items-center overflow-hidden shrink-0 relative shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
-                {/* CHRONOMÈTRE BLOQUÉ À GAUCHE */}
-                <div className="w-[15vw] h-full bg-blue-700 flex flex-col items-center justify-center border-r border-blue-500/50 shadow-[10px_0_25px_rgba(0,0,0,0.4)] z-20 shrink-0">
-                    <div className="text-[1.2vh] uppercase font-black tracking-[0.3em] text-blue-200 mb-[-0.5vh] opacity-80">Chrono</div>
-                    <TVTimer />
-                </div>
-
-                {/* SCORES EN DIRECT DÉFILANTS (MARQUEE) */}
-                <div className="flex-1 h-full relative overflow-hidden flex items-center bg-[#020617] group">
-                    {pauseTimeLeft !== null && pauseTimeLeft > 0 ? (
-                        // Minuterie de pause
-                        <div className="flex-1 flex items-center justify-center gap-3">
-                            <span style={{ fontSize: '1.8vh', color: '#fbbf24', fontWeight: 900 }}>
-                                ⏸ Pause
-                            </span>
-                            <span style={{ fontSize: '2.2vh', color: 'white', fontWeight: 900, fontFamily: 'monospace' }}>
-                                {formatPause(pauseTimeLeft)}
-                            </span>
-                            <span style={{ fontSize: '1.4vh', color: '#94a3b8' }}>
-                                — Prochain match dans {formatPause(pauseTimeLeft)}
-                            </span>
-                        </div>
-                    ) : liveScores.length > 0 && (tvConfig?.showLiveScores ?? false) ? (
-                        <div 
-                            className="marquee-content animate-marquee"
-                            style={{ '--marquee-duration': `${Math.max(15, liveScores.length * 6)}s` } as any}
-                        >
-                            {Array.from({ length: 2 }).map((_, copyIdx) => (
-                                <div key={`copy-${copyIdx}`} className="flex items-center gap-[6vw] pr-[6vw] shrink-0">
-                                    {liveScores.map((s, idx) => (
-                                        <div key={`${s.court}-${idx}`} className="flex items-center gap-[1.5vw] shrink-0">
-                                            <div className="flex flex-col items-start translate-y-[0.2vh]">
-                                                <span className="text-[1vh] font-black text-blue-500 bg-blue-500/10 px-[0.6vw] py-[0.2vh] rounded-sm border border-blue-500/30 uppercase leading-none mb-[0.4vh]">Terrain</span>
-                                                <span className="text-[2.5vh] font-black text-white leading-none">{s.court}</span>
-                                            </div>
-                                            <div className="flex items-center gap-[1.2vw] bg-white/5 px-[1.5vw] py-[0.8vh] rounded-[1vh] border border-white/5">
-                                                <span className="text-[2.4vh] font-bold text-slate-100 max-w-[12vw] truncate">{s.team1Name}</span>
-                                                <div className="flex items-center gap-[0.8vw] bg-black/60 px-[1vw] py-[0.4vh] rounded-md border border-white/10 ring-1 ring-white/5">
-                                                    <span className="text-[3.5vh] font-mono font-black text-blue-400 leading-none">{s.score1}</span>
-                                                    <span className="text-[2vh] text-slate-600 font-bold">:</span>
-                                                    <span className="text-[3.5vh] font-mono font-black text-blue-400 leading-none">{s.score2}</span>
-                                                </div>
-                                                <span className="text-[2.4vh] font-bold text-slate-100 max-w-[12vw] truncate">{s.team2Name}</span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <span className="text-[2vh] font-black text-white/10 tracking-[1.5em] uppercase pointer-events-none">
-                                {state.tournamentName || "Tournoi Pro"} — Affichage Officiel
-                            </span>
                         </div>
                     )}
-                </div>
 
-                {/* BOUTON MUTE / INFOS */}
-                <div className="w-[8vw] shrink-0 h-full flex items-center justify-center px-[1.5vw] border-l border-white/5 bg-black/50 z-20">
-                    <div className="flex flex-col items-center justify-center h-full px-[1.5vw]">
-                        {isFinalPhase ? (
-                            <>
-                                <div className="text-[0.8vh] font-black text-purple-400 uppercase tracking-widest leading-none mb-[0.2vh]">
-                                    PHASES
-                                </div>
-                                <div className="text-[2vh] font-black text-purple-300 leading-none uppercase">
-                                    FINALES
-                                </div>
-                            </>
-                        ) : (
-                            <>
-                                <div className="text-[1vh] font-black text-blue-400 uppercase tracking-widest leading-none mb-[0.3vh]">
-                                    SESSION
-                                </div>
-                                <div className="text-[3.5vh] font-black text-white leading-none">
-                                    {currentSession}
-                                </div>
-                            </>
-                        )}
-                        <div className="text-[0.7vh] text-slate-600 font-bold tracking-widest uppercase mt-[0.2vh]">V 2.5</div>
+                    {/* ICÔNE SON - Overlay haut droite */}
+                    <div className="absolute top-4 right-4 z-50">
+                        <button
+                            onClick={toggleMute}
+                            className={`p-3 rounded-full border transition-all ${
+                                isMuted
+                                    ? 'bg-red-500/20 border-red-500/50 text-red-400'
+                                    : 'bg-black/30 border-white/10 text-white/30 hover:text-white/60'
+                            }`}
+                            title={isMuted ? 'Réactiver le son' : 'Couper le son'}
+                        >
+                            {isMuted ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                                </svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                                </svg>
+                            )}
+                        </button>
                     </div>
-                </div>
-            </footer>
+
+                    {isPreStarting && (
+                        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center"
+                            style={{ background: 'rgba(2,6,23,0.97)' }}
+                        >
+                            {/* Session */}
+                            <div className="text-7xl font-black text-white uppercase tracking-wider mb-6">
+                                Session {currentSession}
+                            </div>
+
+                            {/* Phrase partenaire */}
+                            <div className="text-4xl text-slate-400 font-semibold mb-10 text-center">
+                                Avec notre partenaire
+                            </div>
+
+                            {/* Logo sponsor aléatoire */}
+                            {sponsors.length > 0 && sponsors[preStartSponsorIndex] && (
+                                <div className="bg-white rounded-3xl p-8 max-w-[800px] max-h-[350px] flex items-center justify-center shadow-2xl">
+                                    <img
+                                        src={sponsors[preStartSponsorIndex].logo}
+                                        alt={sponsors[preStartSponsorIndex].name}
+                                        className="max-w-full max-h-[280px] object-contain"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Si pas de sponsor */}
+                            {sponsors.length === 0 && (
+                                <div className="text-5xl text-blue-400 font-black">
+                                    S.R.C Basket 🏀
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </main>
+
+                {/* PIED DE PAGE TV (BAS) */}
+                <footer className="h-[108px] bg-black border-t border-white/5 flex items-center overflow-hidden shrink-0 relative shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+                    {/* CHRONOMÈTRE BLOQUÉ À GAUCHE */}
+                    <div className="w-[288px] h-full bg-blue-700 flex flex-col items-center justify-center border-r border-blue-500/50 shadow-[10px_0_25px_rgba(0,0,0,0.4)] z-20 shrink-0">
+                        <div className="text-xs uppercase font-black tracking-[0.3em] text-blue-200 mb-0.5 opacity-80">Chrono</div>
+                        <TVTimer />
+                    </div>
+
+                    {/* SCORES EN DIRECT DÉFILANTS (MARQUEE) */}
+                    <div className="flex-1 h-full relative overflow-hidden flex items-center bg-[#020617] group">
+                        {pauseTimeLeft !== null && pauseTimeLeft > 0 ? (
+                            // Minuterie de pause
+                            <div className="flex-1 flex items-center justify-center gap-4">
+                                <span className="text-xl text-amber-400 font-black">
+                                    ⏸ Pause
+                                </span>
+                                <span className="text-2xl text-white font-black font-mono">
+                                    {formatPause(pauseTimeLeft)}
+                                </span>
+                                <span className="text-base text-slate-400">
+                                    — Prochain match dans {formatPause(pauseTimeLeft)}
+                                </span>
+                            </div>
+                        ) : liveScores.length > 0 && (tvConfig?.showLiveScores ?? false) ? (
+                            <div 
+                                className="marquee-content animate-marquee"
+                                style={{ '--marquee-duration': `${Math.max(15, liveScores.length * 6)}s` } as any}
+                            >
+                                {Array.from({ length: 2 }).map((_, copyIdx) => (
+                                    <div key={`copy-${copyIdx}`} className="flex items-center gap-16 pr-16 shrink-0">
+                                        {liveScores.map((s, idx) => (
+                                            <div key={`${s.court}-${idx}`} className="flex items-center gap-4 shrink-0">
+                                                <div className="flex flex-col items-start">
+                                                    <span className="text-[10px] font-black text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/30 uppercase leading-none mb-1">Terrain</span>
+                                                    <span className="text-2xl font-black text-white leading-none">{s.court}</span>
+                                                </div>
+                                                <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-xl border border-white/5">
+                                                    <span className="text-xl font-bold text-slate-100 max-w-[200px] truncate">{s.team1Name}</span>
+                                                    <div className="flex items-center gap-2 bg-black/60 px-3 py-1 rounded-md border border-white/10 ring-1 ring-white/5">
+                                                        <span className="text-3xl font-mono font-black text-blue-400 leading-none">{s.score1}</span>
+                                                        <span className="text-lg text-slate-600 font-bold">:</span>
+                                                        <span className="text-3xl font-mono font-black text-blue-400 leading-none">{s.score2}</span>
+                                                    </div>
+                                                    <span className="text-xl font-bold text-slate-100 max-w-[200px] truncate">{s.team2Name}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-lg font-black text-white/10 tracking-[1.5em] uppercase pointer-events-none">
+                                    {state.tournamentName || "Tournoi Pro"} — Affichage Officiel
+                                </span>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* BOUTON MUTE / INFOS */}
+                    <div className="w-[160px] shrink-0 h-full flex items-center justify-center px-4 border-l border-white/5 bg-black/50 z-20">
+                        <div className="flex flex-col items-center justify-center h-full">
+                            {isFinalPhase ? (
+                                <>
+                                    <div className="text-[10px] font-black text-purple-400 uppercase tracking-widest leading-none mb-1">
+                                        PHASES
+                                    </div>
+                                    <div className="text-xl font-black text-purple-300 leading-none uppercase">
+                                        FINALES
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">
+                                        SESSION
+                                    </div>
+                                    <div className="text-4xl font-black text-white leading-none">
+                                        {currentSession}
+                                    </div>
+                                </>
+                            )}
+                            <div className="text-[9px] text-slate-600 font-bold tracking-widest uppercase mt-1">V 2.5</div>
+                        </div>
+                    </div>
+                </footer>
+            </div>
          </div>
     );
 };

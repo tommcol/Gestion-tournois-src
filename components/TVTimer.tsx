@@ -99,7 +99,7 @@ const TVTimer: React.FC = () => {
     else if (timeLeft === 0) colorClass = "text-red-500 font-black";
 
     return (
-        <div className={`text-[4.5vh] font-mono font-bold leading-none translate-y-[0.2vh] tracking-tight ${colorClass}`}>
+        <div className={`text-5xl font-mono font-black leading-none tracking-tight ${colorClass}`}>
             {isPreStarting ? `-${preStartCount}s` : formatTime(timeLeft)}
         </div>
     );
