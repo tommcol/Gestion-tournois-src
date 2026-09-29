@@ -1,0 +1,20 @@
+{
+  "short_name": "TournoiPro",
+  "name": "Tournoi Pro - Gestion de Tournois",
+  "icons": [
+    {
+      "src": "https://picsum.photos/id/1/192/192",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://picsum.photos/id/1/512/512",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#ffffff"
+}

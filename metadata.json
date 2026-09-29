@@ -1,0 +1,5 @@
+{
+  "name": "Gestion de tournois avec Tablette",
+  "description": "A comprehensive web application for managing sports tournaments, from team registration and pool phase generation to a flexible final phase with automatic and manual pairing options.",
+  "requestFramePermissions": []
+}

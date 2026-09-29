@@ -1,0 +1,65 @@
+{
+  "name": "tournoi-pro",
+  "productName": "Tournament Manager Pro",
+  "version": "2.1.0",
+  "type": "module",
+  "description": "Application de gestion de tournoi",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "tsc && vite build",
+    "start": "node server.ts",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "Thomas",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "idb": "^8.0.3",
+    "motion": "^12.38.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "tsx": "^4.21.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/react": "^18.2.64",
+    "@types/react-dom": "^18.2.21",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.3",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.3.3",
+    "vite": "^5.1.6",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.tournoipro.app",
+    "productName": "Tournament Manager Pro",
+    "files": [
+      "dist/**/*",
+      "main.cjs",
+      "package.json",
+      "assets/**/*"
+    ],
+    "directories": {
+      "output": "release_build"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "${productName}_${version}.${ext}",
+      "forceCodeSigning": false,
+      "requestedExecutionLevel": "asInvoker"
+    }
+  }
+}
