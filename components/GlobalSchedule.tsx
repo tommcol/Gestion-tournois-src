@@ -4,6 +4,7 @@ import { useTournament } from '../context/TournamentContext';
 import ScoreDialog from './ScoreDialog';
 import { Match, FinalMatch, Category, Player, Team } from '../types';
 import { getAdminTeamName } from '../utils/helpers';
+import { downloadTournamentBackup } from '../utils/tournamentBackup';
 
 const GlobalSchedule: React.FC = () => {
   const { state, dispatch, socket } = useTournament();
@@ -154,6 +155,12 @@ const GlobalSchedule: React.FC = () => {
   };
 
   const handleStartTournament = () => {
+      try {
+          downloadTournamentBackup(state);
+      } catch (error) {
+          console.error('Impossible de télécharger la sauvegarde du tournoi :', error);
+          window.alert('La sauvegarde automatique n’a pas pu être téléchargée. Le tournoi va quand même démarrer.');
+      }
       dispatch({ type: 'START_TOURNAMENT' });
   };
 
