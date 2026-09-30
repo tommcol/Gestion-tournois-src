@@ -1,0 +1,35 @@
+name: Build Windows portable app
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/fix-core-reliability
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Get the project files
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install project packages
+        run: npm ci
+      - name: Build the Windows app
+        run: npm run build:windows
+      - name: Make the EXE available to download
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gestion-Tournois-Windows
+          path: release_build/*.exe
+          if-no-files-found: error
