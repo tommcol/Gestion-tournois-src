@@ -1,5 +1,6 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const http = require('http');
 const { spawn } = require('child_process');
 
@@ -60,9 +61,11 @@ function waitForLocalServer(timeoutMs = 20000) {
 function startPackagedServer() {
   const appResourcesDir = path.join(process.resourcesPath, 'app.asar.unpacked');
   const serverEntry = path.join(appResourcesDir, 'server-build', 'server.cjs');
+  const userDataDir = app.getPath('userData');
+  fs.mkdirSync(userDataDir, { recursive: true });
 
   serverProcess = spawn(process.execPath, [serverEntry], {
-    cwd: app.getPath('userData'),
+    cwd: userDataDir,
     windowsHide: true,
     stdio: 'ignore',
     env: {
@@ -71,8 +74,8 @@ function startPackagedServer() {
       NODE_ENV: 'production',
       PORT: '3000',
       TOURNAMENT_APP_DIR: appResourcesDir,
-      TOURNAMENT_DATA_DIR: app.getPath('userData'),
-      TOURNAMENT_UPLOADS_DIR: path.join(app.getPath('userData'), 'uploads')
+      TOURNAMENT_DATA_DIR: userDataDir,
+      TOURNAMENT_UPLOADS_DIR: path.join(userDataDir, 'uploads')
     }
   });
 
