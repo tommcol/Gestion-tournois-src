@@ -1,310 +1,658 @@
-# 🤖 GUIDE ARCHITECTURE & CODE POUR IA (GESTION-TOURNOIS-SRC)
+# 📖 GUIDE COMPLET DE L'APPLICATION — GESTION TOURNOIS SRC (TOURNAMENT MANAGER PRO)
 
-> **Document destiné à toute Intelligence Artificielle (ou développeur) reprenant ou modifiant ce projet.**  
-> Ce document décrit de manière exhaustive le fonctionnement du projet, son modèle de données, son architecture réseau, ses algorithmes métier et le rôle de chaque composant et fonction du code source.
-
----
-
-## 1. VUE D'ENSEMBLE DU PROJET
-
-**Gestion Tournois SRC (Tournoi Pro)** est une application web temps réel complète dédiée à l'organisation, la gestion et la diffusion de tournois sportifs (spécialement conçue pour le basketball, adaptable à d'autres sports collectifs).
-
-### Cas d'usage multi-écrans en temps réel :
-1. **Poste Central Organisateur (Admin)** : Paramétrage du tournoi, gestion des équipes, poules, planning des sessions, chrono central avec buzzer, validation des scores, gestion des phases finales et de la sonorisation.
-2. **Tablettes Terrains (`CourtView`)** : Disposées sur chaque terrain à la table de marque (`?mode=court&court=X`). Permet de marquer les points en direct (+1, +2, +3), déclarer un forfait, signaler que les équipes sont prêtes, et synchroniser le score en direct.
-3. **Écran Géant TV (`TVDisplay`)** : Affiché en plein écran (`?mode=tv`). Résolution fixe vectorielle 1920×1080 redimensionnée automatiquement par mise à l'échelle CSS (`transform: scale(...)`). Alterne en boucle automatique : prochains matchs, résultats de la session précédente, classements des poules, phases finales et logos des sponsors partenaires, avec pied de page affichant le chronomètre officiel et le ruban défilant des scores en direct.
-4. **Diffusion Sonore & Musique** : Déclenchement automatique des sons d'ambiance (coup de sifflet début, alerte 1 minute, corne/buzzer de fin) et commandes musicales synchronisées.
+> **Ce guide est le document de référence absolu pour comprendre, utiliser, maintenir ou faire évoluer l'application.**  
+> Il s'adresse aux organisateurs de tournois, aux bénévoles sans compétences informatiques, ainsi qu'à tout développeur ou Intelligence Artificielle prenant en charge le code.  
+> Tout est expliqué en français courant avec des mots simples. Chaque terme technique est défini immédiatement.
 
 ---
 
-## 2. MODES D'EXÉCUTION (DUAL-MODE)
+## SOMMAIRE
 
-L'application a été conçue pour fonctionner de deux façons complémentaires :
-
-### Mode A : Réseau Local (Production en gymnase)
-- **Serveur** : Node.js + Express + Socket.io exécuté sur un PC central via `server.ts` (port 3000).
-- **Communication** : WebSockets bidirectionnels temps réel entre le PC admin, les tablettes de terrain et les écrans TV connectés au même réseau Wi-Fi local.
-- **Persistance** : Fichier disque `tournament_data.json` mis à jour via `POST /save` + snapshots automatiques dans le dossier `backups/` à chaque changement de session.
-
-### Mode B : Mode Aperçu Autonome (Web / Cloudflare Workers / Hors-ligne)
-- **Déploiement** : Single Page Application statique compatible Cloudflare Workers (`wrangler.jsonc`, dossier `dist/`).
-- **Détection automatique** : Si aucun serveur Socket.io n'est joignable sous 1,2 seconde (ou erreur de connexion), l'application bascule automatiquement en `isPreviewMode = true`.
-- **Persistance** : Stockage local dans le navigateur (`localStorage` avec clé `tournament_preview_state` et `IndexedDB` via `utils/db.ts`).
-- **Affichage** : Un bandeau discret et clair informe l'utilisateur :  
-  *« Mode aperçu : données sur ce navigateur uniquement ; tablettes et TV non synchronisées »*.
-- **Transition transparente** : Dès qu'un serveur local redevient accessible, l'application se reconnecte et quitte le mode aperçu.
+1. [À quoi sert l’application](#1-à-quoi-sert-lapplication)
+2. [Le déroulement complet d’un tournoi (Étape par étape)](#2-le-déroulement-complet-dun-tournoi)
+3. [Explication de tous les écrans et de tous les boutons (Inventaire exhaustif)](#3-explication-de-tous-les-écrans-et-de-tous-les-boutons)
+4. [Explication du code, fichier par fichier](#4-explication-du-code-fichier-par-fichier)
+5. [Comment les données circulent dans l'application](#5-comment-les-données-circulent)
+6. [Petit dictionnaire des termes techniques](#6-petit-dictionnaire)
+7. [Points à vérifier et écarts observés](#7-points-à-vérifier)
 
 ---
 
-## 3. MODÈLE DE DONNÉES (`types.ts`)
+## 1. À QUOI SERT L'APPLICATION
 
-### `TournamentState` (État global)
-```typescript
-export interface TournamentState {
-  tournamentName: string;            // Nom du tournoi (ex: "Tournoi des As SRC")
-  numberOfCourts: number;            // Nombre total de terrains actifs (ex: 4)
-  timerDuration: number;             // Durée d'un match en secondes (ex: 600s = 10min)
-  breakDuration: number;             // Durée de la pause entre sessions (en secondes)
-  matchDisplayDuration: number;      // Temps d'affichage par page sur la TV (secondes)
-  sponsorDisplayDuration: number;    // Temps d'affichage d'un sponsor sur la TV (secondes)
-  categories: Category[];            // Liste des catégories (ex: U13M, Seniors, Loisirs)
-  teams: Team[];                     // Liste de toutes les équipes engagées
-  matches: Match[];                  // Matchs de poules générés
-  pools: Pool[];                     // Poules réparties
-  finalMatches: { [categoryId: string]: FinalMatch[] }; // Arbres de phases finales par catégorie
-  sponsors: Sponsor[];               // Partenaires et sponsors avec logos
-  standings: { [poolId: string]: Standing[] }; // Classements calculés
-  currentSession: number;            // Numéro de la session de jeu active (1, 2, 3...)
-  soundConfig: CustomSoundConfig;    // Fichiers audio personnalisés (début, fin, 1min)
-  tvConfig: TVConfig;                // Options d'affichage TV (cases à cocher)
-  playlist: Track[];                 // Morceaux de musique MP3/Web
-  isPoolStageFinished: boolean;      // True si la phase de poule est close
-  isFinalPhase: boolean;             // True si on joue les phases finales
-  isTournamentStarted: boolean;      // True si le tournoi a démarré
-  enableCourtView: boolean;          // Activation/désactivation de la saisie tablette
-}
+L'application **Gestion Tournois SRC** (ou **Tournament Manager Pro**) est un logiciel conçu pour organiser et animer un tournoi sportif de A à Z (spécialement calibré pour le **Basketball 3x3**, mais utilisable pour tout sport collectif se jouant sur plusieurs terrains avec des sessions de jeu au temps).
+
+### À qui sert-elle ?
+1. **Aux organisateurs (Table de contrôle centrale)** :
+   - Ils définissent le tournoi (nom, nombre de terrains, durée des matchs, pauses).
+   - Ils inscrivent les équipes et gèrent les catégories (jeunes, seniors, loisirs, mixte...).
+   - Ils génèrent automatiquement les poules et le calendrier des matchs en évitant qu'une équipe ne joue deux matchs d'affilée sans repos.
+   - Ils pilotent le chronomètre officiel central, la sonorisation (musique, sifflet, corne de fin de match) et valident les scores.
+2. **Aux bénévoles et marqueurs sur les terrains (Tablettes tactiles)** :
+   - Chaque terrain peut disposer d'une tablette ou d'un smartphone affichant une feuille de marque simplifiée.
+   - Le marqueur clique sur `+1`, `+2`, `+3` au fur et à mesure que les paniers sont marqués.
+   - Il note les fautes et indique à l'organisateur central quand les deux équipes sont prêtes à jouer.
+3. **Au public, aux joueurs et aux entraîneurs (Écran TV géant)** :
+   - Un écran de télévision ou un vidéoprojecteur branché dans le gymnase fait défiler automatiquement les informations utiles : les prochains matchs, les résultats récents, les classements en direct, les tableaux de phase finale et les logos des sponsors.
+   - Au bas de l'écran TV, le chronomètre officiel défile en direct et un ruban d'information fait défiler les scores des matchs en cours sur chaque terrain.
+
+### Comment est-elle utilisée le jour du tournoi ?
+- **Aucune connexion Internet n'est requise** le jour J. L'application tourne sur un réseau local Wi-Fi privé créé par une simple box ou un routeur dans le gymnase.
+- Le PC de l'organisateur fait office de **serveur** : tous les autres appareils (la télé et les tablettes) s'y connectent via leur navigateur web (Chrome, Edge, Safari...) en tapant l'adresse IP du PC.
+- Si le tournoi est consulté hors du gymnase sur Internet (mode démonstration ou hébergement Cloudflare), l'application bascule automatiquement en **Mode Aperçu** : les données sont conservées dans le navigateur de l'appareil sans perturber le réseau.
+
+---
+
+## 2. LE DÉROULEMENT COMPLET D'UN TOURNOI
+
+Voici la chronologie exacte des étapes que suit un organisateur, avec le détail des clics, des saisies et des réactions du logiciel.
+
+---
+
+### Étape 1 : Réglages généraux (Terrains, Durée et Pauses)
+1. **Où cliquer** : Menu latéral gauche → onglet **Configuration**.
+2. **Ce que l'on saisit** (dans le bloc *« 🏗️ Informations générales »*) :
+   - **Nom du Tournoi** : Texte libre (ex. : `Tournoi des As SRC 2026`). Ce nom apparaît en grand sur l'écran TV en attente et en haut du menu admin.
+   - **Nombre de Terrains** : Nombre entier supérieur ou égal à 1 (ex. : `4`). Cela détermine combien de matchs peuvent être joués en même temps lors d'une session.
+   - **Durée du Match (minutes)** : Durée de jeu effective (ex. : `10`). C'est le temps qui sera décompté par le chronomètre officiel.
+   - **Temps de Pause (minutes)** : Intervalle de battement entre la fin d'une session et le début de la suivante (ex. : `2`).
+3. **Action** : Cliquer sur le bouton bleu **« Enregistrer la configuration »** tout en bas de la page.
+4. **Ce qui se passe** : Une boîte de dialogue confirme : *« Configuration sauvegardée ! »*. Ces paramètres sont mémorisés dans l'état général et enregistrés sur le disque du PC.
+
+---
+
+### Étape 2 : Création des Catégories
+Une catégorie représente une division sportive (ex. : *U13 Garçons*, *Seniors Féminines*, *Mixte Entreprises*). Chaque catégorie peut avoir ses propres règles de gestion.
+1. **Où cliquer** : Toujours dans l'onglet **Configuration**, ouvrir le bloc *« 🏷️ Catégories & Terrains »*, puis cliquer sur le bouton pointillé **« + Ajouter une catégorie »**.
+2. **Ce qui apparaît** : Une fenêtre modale (boîte de dialogue) intitulée *« Ajouter une catégorie »* ou *« Modifier la catégorie »*.
+3. **Ce que l'on configure** :
+   - **Nom de la catégorie** : Nom officiel (ex. : `U15 Mixtes`).
+   - **Couleur** : Une pastille de couleur pour identifier visuellement la catégorie sur le calendrier et sur l'écran TV.
+   - **Terrains réservés** : Case(s) à cocher pour réserver certains terrains exclusivement à cette catégorie pendant la phase de poules (ex. : réserver le Terrain 1 aux petits). Si aucun terrain n'est coché, les matchs peuvent avoir lieu sur n'importe quel terrain disponible.
+   - **Arbitre obligatoire** : Si coché, l'application désignera obligatoirement une équipe pour arbitrer chaque match et l'affichera sur la TV et les feuilles de route.
+   - **Marqueur obligatoire** : Si coché, l'application désignera une équipe pour tenir la table de marque.
+   - **Saisie détaillée des joueurs** :
+     - Si décoché (mode simplifié) : on saisit juste le nom de l'équipe et éventuellement le nombre de femmes.
+     - Si coché (mode détaillé) : on saisira la liste nominative des joueurs avec leur prénom, nom et genre.
+4. **Action** : Cliquer sur **« Enregistrer »**. La catégorie s'ajoute immédiatement à la liste.
+
+---
+
+### Étape 3 : Inscription des équipes
+1. **Où cliquer** : Menu latéral gauche → onglet **Équipes**.
+2. **Ce qui apparaît** : Deux sous-onglets : *« Liste des équipes »* et *« Inscription »*.
+3. **Formulaire d'inscription** :
+   - **Nom de l'équipe** : Texte unique (ex. : `Les Aigles Verts`).
+   - **Catégorie** : Menu déroulant pour choisir dans quelle catégorie inscrire l'équipe.
+   - **Calcul du bonus féminin 3x3** :
+     - *En mode simplifié* : Un champ numérique permet de renseigner le nombre de femmes dans l'équipe.
+     - *En mode détaillé* : On ajoute chaque joueur un par un via le sous-formulaire (Prénom, Nom, Sexe `Homme`/`Femme`, Rôles : `Joueur`, `Arbitre`, `Marqueur`).
+     - **Règle du bonus calculée par le logiciel** :
+       - 0 femme = 0 point de bonus.
+       - 1 femme = +1 point de bonus au score initial.
+       - 2 femmes ou plus = +2 points de bonus au score initial.
+       - Un badge orange `+1 pt` ou `+2 pts` s'affichera automatiquement à côté du nom de l'équipe lors des matchs et sur la feuille de match.
+4. **Action** : Cliquer sur **« Ajouter l'équipe »**. L'équipe apparaît dans le tableau récapitulatif avec sa catégorie et sa pastille de couleur.
+
+---
+
+### Étape 4 : Organisation en Poules (Traditionnelle ou Suisse)
+1. **Où cliquer** : Menu latéral gauche → onglet **Organisation**.
+2. **Sélectionner la catégorie** : Des onglets en haut permettent de basculer d'une catégorie à l'autre.
+3. **Choisir le format sportif** :
+   - **Format Traditionnel (Poules classiques)** :
+     - On choisit le *Nombre d'équipes par poule* (ex. : poules de 3, 4 ou 5 équipes).
+     - Option *Double aller-retour* : à cocher si vous souhaitez que les équipes s'affrontent deux fois (très pratique quand il y a peu d'équipes, ex. : une poule unique de 3 équipes).
+     - Cliquer sur le bouton vert **« Générer les poules et matchs »**.
+     - Le logiciel mélange aléatoirement les équipes de la catégorie, crée les poules nommées Poule A, Poule B, etc., et crée tous les matchs nécessaires.
+   - **Format Système Suisse** :
+     - Idéal pour les tournois où l'on veut garantir exactement le même nombre de matchs à chaque équipe sans élimination prématurée.
+     - On sélectionne *Système Suisse* et on choisit le *Nombre de matchs par équipe* (ex. : 3 ou 4 matchs).
+     - Le logiciel utilise la méthode mathématique du cercle pour planifier les rencontres sans doublons.
+4. **Attention / Risque** : Si des scores avaient déjà été enregistrés pour cette catégorie, le bouton avertit l'utilisateur : *« ATTENTION : Des scores ont déjà été saisis. Régénérer effacera tous les résultats de cette catégorie. Continuer ? »*.
+
+---
+
+### Étape 5 : Création du Calendrier global, des Sessions et Terrains
+1. **Où cliquer** : Menu latéral gauche → onglet **Calendrier Global**.
+2. **Action** : Cliquer sur le bouton bleu **« Générer le calendrier global »** (ou la génération est automatique dès la création des poules).
+3. **Ce que fait l'algorithme intelligent (`scheduleLogic.ts`)** :
+   - Il calcule le nombre de sessions nécessaires pour jouer tous les matchs sur le nombre de terrains disponibles.
+   - **Priorité 1** : Remplir au maximum chaque terrain à chaque session pour qu'aucun terrain ne reste inoccupé.
+   - **Priorité 2 (Repos des équipes)** : Il calcule l'intervalle idéal de repos pour chaque équipe et évite rigoureusement qu'une équipe joue deux sessions consécutives si d'autres équipes peuvent jouer.
+   - **Priorité 3 (Terrains réservés)** : Il place les matchs des catégories sur leurs terrains prioritaires tant qu'il y a des matchs de poule.
+   - **Priorité 4 (Arbitrage automatique)** : Pour chaque match nécessitant un arbitre ou un marqueur, il choisit automatiquement une équipe qui ne joue pas pendant cette session pour tenir la table, sans que cette équipe n'enchaîne deux arbitrages d'affilée.
+
+---
+
+### Étape 6 : Pilotage du tournoi le jour J (Sessions, Chrono et Scores)
+1. **Lancement du tournoi** :
+   - Dans le bandeau supérieur de l'écran, cliquer sur **« Démarrer le tournoi »**.
+2. **Le Chronomètre central (`GlobalTimer`)** :
+   - Cliquer sur le bouton vert **« Démarrer »**.
+   - Un compte à rebours visuel et sonore (5, 4, 3, 2, 1) se déclenche, suivi du coup de sifflet officiel.
+   - Le chrono s'affiche en grand sur l'écran admin et sur la TV.
+   - À 1 minute de la fin, un son d'avertissement retentit automatiquement.
+   - À 0 seconde, la corne de brume officielle (buzzer) retentit sur la sono.
+3. **Saisie et validation des scores sur l'Admin** :
+   - Sur la ligne de chaque match de la session active, l'organisateur peut ajuster le score avec les boutons `+` et `-`.
+   - Cliquer sur le bouton vert **« ✓ Valider »**.
+   - Le match passe au statut *Terminé* (badge vert).
+   - En cas d'erreur, cliquer sur **« ✏️ Modifier »** pour corriger les points ou déclarer un **Forfait** (l'équipe absente reçoit 0 point au classement, l'adversaire reçoit 3 points de victoire avec un score officiel de 20-0).
+4. **Passage à la session suivante** :
+   - Cliquer sur le bouton bleu **« Lancer la session suivante »**.
+   - Le numéro de session passe de 1 à 2.
+   - L'écran TV bascule instantanément pour afficher les matchs de la session 2.
+   - Le serveur enregistre une sauvegarde instantanée dans le dossier `backups/`.
+   - En cas d'erreur de manipulation, le bouton **« ← Session précédente »** permet de revenir en arrière sans perdre aucun score.
+
+---
+
+### Étape 7 : Classement et Départage des équipes
+1. **Où cliquer** : Menu latéral gauche → onglet **Classement**.
+2. **Barème officiel appliqué** :
+   - **Victoire** = 3 points.
+   - **Match nul** = 2 points.
+   - **Défaite** = 1 point (règle officielle basket : encourage la participation).
+   - **Forfait** = 0 point.
+3. **Critères de départage en cas d'égalité de points** :
+   1. Nombre total de points au classement.
+   2. Résultat de la confrontation directe entre les équipes à égalité.
+   3. Différence générale de points marqués et encaissés (`Points Pour - Points Contre`).
+   4. Meilleure attaque (total des points marqués).
+
+---
+
+### Étape 8 : Phase Finale (Arbres éliminatoires et finales)
+1. **Où cliquer** : Menu latéral gauche → onglet **Phase Finale**.
+2. **Sélectionner la catégorie** et choisir la configuration :
+   - Nombre total d'équipes qualifiées : 4 (demi-finales), 8 (quarts de finale), 16 (huitièmes) ou 32 (seizièmes).
+3. **Génération du tableau** :
+   - **Mode Automatique** : Le logiciel prend automatiquement les 1ers et 2èmes de chaque poule et les croise (ex. : 1er Poule A affronte 2ème Poule B).
+   - **Mode Manuel** : L'organisateur utilise un éditeur d'appariements pour composer lui-même les affiches de son choix.
+   - Cliquer sur **« Générer la phase finale »**.
+4. **Progression des vainqueurs** :
+   - Chaque match de phase finale dispose d'un champ pour lui affecter un terrain (`Court`).
+   - Quand le score d'un quart de finale est validé, le logiciel qualifie automatiquement le vainqueur dans la demi-finale correspondante.
+   - Si le tableau commence en demi-finale, une **Petite Finale (Match pour la 3ème place)** est automatiquement créée entre les deux perdants des demi-finales.
+   - **Règle de sécurité 3x3** : En phase finale, un score nul est impossible. L'application bloque la validation tant qu'une équipe n'a pas au moins un point d'avance.
+5. **Régie TV pour les finales** :
+   - Un sélecteur permet de forcer l'affichage sur la TV d'un tour particulier (ex. : afficher en grand l'arbre des Quarts, ou uniquement les Finales).
+
+---
+
+### Étape 9 : Diffusion sur l'Écran TV géant
+1. **Où cliquer** : En haut à gauche de l'écran admin, deux boutons violets sont présents :
+   - **« Lancer la TV »** : Ouvre l'écran public dans un nouvel onglet avec la sonorisation activée (sifflets, buzzers, musique).
+   - **« TV (Muet) »** : Ouvre l'écran public sans aucun son (idéal pour un deuxième écran dans les vestiaires ou au bar).
+2. **Ce qui apparaît sur la TV** :
+   - Un premier écran d'accueil avec un gros bouton : *« Activer l'affichage TV »*. Ce clic est nécessaire pour autoriser le navigateur à jouer du son (règle de sécurité des navigateurs appelée *autoplay policy*).
+   - Ensuite, l'affichage 1920×1080 démarre son cycle automatique :
+     1. Prochains matchs de la session en cours avec les terrains et arbitres.
+     2. Résultats de la session précédente (vainqueur en vert, perdant en rouge).
+     3. Classements complets des poules.
+     4. Tableaux des phases finales en cours.
+     5. Diapositives des sponsors partenaires avec leurs logos.
+   - **Bandeau bas permanent** : Le chronomètre officiel en gros chiffres à gauche, le numéro de session à droite, et un ruban défilant au centre affichant les scores en direct reçus des tablettes.
+
+---
+
+### Étape 10 : Utilisation des Tablettes Terrains (`CourtView`)
+1. **Comment y accéder** : Sur chaque tablette posée à la table de marque d'un terrain, ouvrir l'adresse du serveur avec le paramètre du terrain, par exemple : `http://192.168.1.50:3000/?view=court&court=1` pour le Terrain 1.
+2. **Fonctionnement à la table** :
+   - La tablette affiche le match prévu pour sa session et son terrain.
+   - Les marqueurs cliquent sur le bouton **« Équipes prêtes »** : l'organisateur voit instantanément le voyant du terrain passer au vert sur son écran de contrôle.
+   - Pendant le match, le marqueur utilise les gros boutons tactiles `+1`, `+2`, `+3` pour ajouter les points au fur et à mesure. Chaque point est envoyé instantanément sur le bandeau défilant de la TV.
+   - Le marqueur peut aussi comptabiliser les fautes d'équipe avec un code couleur conforme aux règles FIBA 3x3 :
+     - De 1 à 6 fautes : vert (fautes normales).
+     - De 7 à 9 fautes : orange (2 lancers-francs automatiques).
+     - 10 fautes et plus : rouge (2 lancers-francs plus possession de balle).
+   - En fin de match, le marqueur clique sur **« Envoyer le score »**. Le score final est validé et met à jour le classement sans que l'organisateur central n'ait besoin de ressaisir quoi que ce soit.
+
+---
+
+### Étape 11 : Feuilles de route, Feuilles de match et Impressions
+1. **Où cliquer** : Menu latéral gauche → onglet **Feuilles de Route**.
+2. **Feuilles de route par équipe** :
+   - Pour chaque équipe inscrite, l'application génère son planning personnalisé pour toute la journée : à quelle heure/session elle joue, sur quel terrain, contre qui, et quand elle doit arbitrer ou tenir la table.
+   - Trois boutons d'action :
+     - **« Imprimer (Direct) »** : Ouvre la boîte d'impression du navigateur pour imprimer directement les feuilles de route à distribuer aux capitaines à leur arrivée.
+     - **« Copier pour Sheets »** : Copie les données brutes dans le presse-papier pour les coller dans Google Sheets ou Excel.
+     - **« Exporter (.xlsx) »** : Télécharge un tableau pour tableur.
+3. **Feuilles de match papier 3x3** :
+   - Permet d'imprimer des feuilles de match de secours au format officiel 3x3 (A4 paysage, découpable en 4 feuilles par page format 2×2).
+   - Chaque feuille comprend l'en-tête du match, les noms des équipes, le rappel du bonus féminin pré-rempli, la grille de pointage de 1 à 21 points et la grille des fautes de 1 à 13.
+
+---
+
+### Étape 12 : Sauvegardes, Exportations et Sécurité
+1. **Double sauvegarde automatique permanente** :
+   - À chaque clic ou modification de score, les données sont immédiatement écrites sur le disque dur du PC dans `tournament_data.json` via le serveur.
+   - En parallèle, le navigateur garde une copie intégrale dans sa base interne **IndexedDB**.
+   - À chaque changement de session, un fichier d'archive horodaté est stocké dans le dossier `backups/` du PC (les 5 dernières sessions sont conservées).
+2. **Export / Import manuel** :
+   - Dans **Configuration** → cliquer sur le bouton gris **« Exporter / Importer »**.
+   - Cliquer sur **« Télécharger la sauvegarde (.json) »** pour enregistrer une copie sur une clé USB.
+   - Pour réinstaller un tournoi sur un autre ordinateur, cliquer sur **« Importer un fichier JSON »**.
+
+---
+
+## 3. EXPLICATION DE TOUS LES ÉCRANS ET DE TOUS LES BOUTONS
+
+Voici l'inventaire exhaustif de tous les contrôles visibles de l'application, classés par écran.
+
+---
+
+### A. Barre de navigation supérieure (`App.tsx`)
+- **Titre du tournoi** : Texte à gauche. Affiche le nom actuel du tournoi.
+- **Bouton « Lancer la TV »** (fond violet, icône écran) :
+  - *Action* : Ouvre l'affichage TV avec le son activé dans un nouvel onglet de navigateur (`?view=tv`).
+  - *Données modifiées* : Aucune.
+  - *Risque / Confirmation* : Aucun.
+- **Bouton « TV (Muet) »** (fond gris foncé, icône haut-parleur barré) :
+  - *Action* : Ouvre l'affichage TV sans sonorisation (`?view=tv&mute=true`).
+  - *Données modifiées* : Aucune.
+  - *Risque / Confirmation* : Aucun.
+- **Lecteur de musique (`MusicPlayer.tsx`)** :
+  - *Bouton Lecture/Pause (▶ / ⏸)* : Démarre ou suspend la musique d'ambiance.
+  - *Bouton Suivant (⏭)* : Passe au morceau suivant de la playlist.
+  - *Bouton Volume (icône enceinte)* : Règle le niveau sonore de la musique.
+- **Chronomètre global (`GlobalTimer.tsx`)** :
+  - *Affichage numérique (ex. : `10:00`)* : Indique le temps restant de la session.
+  - *Bouton « Démarrer » (vert)* : Lance le décompte sonore de 5 secondes puis démarre le chrono.
+  - *Bouton « Pause » (orange)* : Met le chronomètre en pause sans réinitialiser le temps.
+  - *Bouton « Réinitialiser » (gris)* : Remet le chronomètre à la durée configurée pour la session.
+
+---
+
+### B. Menu latéral gauche (`App.tsx`)
+- **Bouton « Configuration »** : Affiche l'écran de paramétrage général, des catégories, de la TV et des sponsors.
+- **Bouton « Équipes »** : Affiche le tableau des équipes engagées et le formulaire d'inscription.
+- **Bouton « Organisation »** : Affiche la répartition des poules et la génération des matchs.
+- **Bouton « Calendrier Global »** : Affiche le planning de toutes les sessions, le contrôle des terrains et la saisie des scores.
+- **Bouton « Classement »** : Affiche les tableaux des scores et points de chaque poule.
+- **Bouton « Phase Finale »** : Affiche la création et la gestion des arbres éliminatoires (quarts, demis, finales).
+- **Bouton « Feuilles de Route »** : Affiche les fiches individuelles par équipe et l'impression des feuilles de match.
+- **Bouton « Arbitre / Marqueur »** : Affiche la grille récapitulative des désignations des officiels.
+- **Bouton « Aide »** : Affiche le manuel d'utilisation intégré.
+
+---
+
+### C. Écran « Configuration » (`TournamentConfig.tsx`)
+#### Bloc 1 : Informations générales
+- **Champ « Nom du Tournoi »** : Saisie du nom affiché publiquement.
+- **Champ « Nombre de Terrains »** : Saisie du nombre de terrains physiques disponibles (minimum 1).
+- **Champ « Durée du Match (minutes) »** : Durée du compte à rebours de jeu (minimum 1 minute).
+- **Champ « Temps de Pause (minutes) »** : Durée de battement théorique entre sessions.
+
+#### Bloc 2 : Catégories & Terrains
+- **Bouton « Modifier » (bleu, à côté de chaque catégorie)** : Ouvre la fenêtre `CategoryDialog` pour changer le nom, la couleur ou les terrains réservés de la catégorie.
+- **Bouton « Supprimer » (rouge)** : Supprime la catégorie. *Attention : supprime également les équipes et matchs rattachés*.
+- **Bouton « + Ajouter une catégorie » (rectangle en pointillés)** : Ouvre la fenêtre `CategoryDialog` pour créer une nouvelle division.
+
+#### Bloc 3 : Paramètres avancés (Menu accordéon repliable)
+- **Sous-bloc « 📺 Affichage TV »** :
+  - *Champ « Durée affichage matchs TV (sec) »* : Temps en secondes de chaque page de matchs (défaut : 8s).
+  - *Champ « Durée affichage sponsors TV (sec) »* : Temps d'affichage d'un sponsor (défaut : 6s).
+  - *Case à cocher « Prochains Matchs »* : Active ou masque la diapositive des matchs à venir sur la TV.
+  - *Case à cocher « Résultats Précédents »* : Active ou masque la diapositive des derniers scores.
+  - *Case à cocher « Classements »* : Active ou masque la diapositive des classements de poules.
+  - *Case à cocher « Sponsors »* : Active ou masque la diapositive des partenaires commerciaux.
+  - *Case à cocher « Afficher Chrono »* : Affiche le chronomètre dans le pied de page de la TV.
+  - *Case à cocher « Scores en Direct »* : Active le bandeau défilant des scores issus des tablettes. Grisé si les tablettes ne sont pas activées.
+- **Sous-bloc « 🔔 Sons personnalisés »** :
+  - *Bouton « Choisir un fichier » pour Sifflet de Départ* : Téléverse un fichier audio MP3/WAV (max 1 Mo) pour remplacer le sifflet par défaut.
+  - *Bouton « Choisir un fichier » pour Alerte 1 Minute* : Téléverse un son d'avertissement.
+  - *Bouton « Choisir un fichier » pour Corne de Fin* : Téléverse le son du buzzer final.
+  - *Boutons « Réinitialiser »* : Rétablissent les signaux sonores par défaut du logiciel.
+- **Sous-bloc « 🏢 Sponsors » (`SponsorManager.tsx`)** :
+  - *Champ texte « Nom du sponsor »* + bouton pour importer le logo (image PNG/JPEG).
+  - *Bouton « Ajouter le sponsor »* : Enregistre le partenaire dans la boucle TV.
+  - *Bouton « Supprimer »* sur chaque sponsor existant.
+- **Sous-bloc « 📱 Tablettes terrain »** :
+  - *Case à cocher « Activer la saisie sur tablette terrain »* : Autorise l'accès aux pages `?view=court&court=X`.
+  - *Liens directs Terrain 1, Terrain 2...* : Permet d'ouvrir la page de chaque terrain dans un nouvel onglet pour tester ou envoyer le lien aux marqueurs.
+
+#### Bas de page Configuration
+- **Bouton bleu « Enregistrer la configuration »** : Applique toutes les modifications et les diffuse en temps réel sur le réseau.
+- **Bouton « Exporter / Importer »** : Ouvre la boîte de dialogue `ExportDialog`.
+- **Bouton rouge « Nouveau tournoi (Conserver réglages) »** : Réinitialise les équipes, poules et matchs tout en gardant les catégories, réglages TV, sponsors et sons. *Affiche une confirmation de sécurité avant d'effacer les données*.
+
+---
+
+### D. Écran « Équipes » (`TeamManager.tsx`)
+- **Onglet « Liste des équipes »** : Tableau listant toutes les équipes avec leur catégorie, leur composition et leur bonus féminin.
+- **Onglet « Inscription »** :
+  - *Champ « Nom de l'équipe »*.
+  - *Menu déroulant « Catégorie »*.
+  - *Section Joueurs (si mode détaillé)* :
+    - Champs Prénom, Nom, boutons radio Homme/Femme, cases Joueur/Arbitre/Marqueur.
+    - Bouton vert « + Ajouter le joueur ».
+  - *Champ « Nombre de joueuses » (si mode simplifié)* : Renseigne manuellement le quota féminin pour le bonus 3x3.
+  - *Bouton vert « Ajouter l'équipe »*.
+- **Sur chaque ligne d'équipe** :
+  - *Bouton bleu « Modifier »* : Charge les données de l'équipe dans le formulaire.
+  - *Bouton rouge « Supprimer »* : Supprime l'équipe après confirmation.
+
+---
+
+### E. Écran « Organisation / Poules » (`PoolsDisplay.tsx`)
+- **Onglets de catégories** : Permet de choisir quelle catégorie organiser.
+- **Boutons radio Format** : Choix entre *« Tournoi Traditionnel »* et *« Système Suisse »*.
+- **Champ « Équipes par poule »** (mode traditionnel) : Définit la taille des poules (ex. : 4).
+- **Case à cocher « Double aller-retour »** : Double le nombre de confrontations.
+- **Champ « Nombre de matchs par équipe »** (mode suisse) : Fixe le nombre exact de tours.
+- **Bouton vert « Générer les poules et matchs »** : Crée les groupes et les rencontres. *Affiche une alerte rouge si des scores existent déjà*.
+- **Bouton rouge « Réinitialiser les poules »** : Supprime les poules et remet les équipes en attente.
+
+---
+
+### F. Écran « Calendrier Global » (`GlobalSchedule.tsx`)
+- **Bouton « Démarrer le tournoi »** : Initialise le tournoi et verrouille les poules.
+- **Bouton vert « Lancer la session suivante »** : Incrémente le numéro de session active et synchronise la TV.
+- **Bouton gris « ← Session précédente »** : Recule d'une session sans effacer aucun score.
+- **Bouton « 📺 Contrôle TV »** : Ouvre un menu pop-up rapide permettant d'activer ou de désactiver instantanément les diapositives TV (matchs, résultats, classements, sponsors, live scores) sans avoir à quitter le calendrier.
+- **Indicateurs de terrains (T.1, T.2...)** : Pastilles cliquables. Grises = en attente ; Vertes = équipes prêtes signalées par la tablette. Un clic manuel permet à l'organisateur de basculer l'état à la main.
+- **Sur chaque ligne de match** :
+  - *Boutons `-` et `+`* pour chaque équipe : Ajuste les points en direct.
+  - *Bouton vert « ✓ Valider »* : Enregistre le score officiel et met à jour le classement immédiatement.
+  - *Bouton bleu « ✏️ Modifier »* : Ouvre la fenêtre `ScoreDialog` pour changer le score ou cocher un forfait.
+
+---
+
+### G. Écran « Phase Finale » (`FinalPhaseManager.tsx`)
+- **Onglet par catégorie** : Permet de piloter la phase finale catégorie par catégorie.
+- **Menu « Équipes qualifiées »** : Choix entre 4, 8, 16 ou 32 équipes.
+- **Bouton radio Génération** : *Automatique* (selon les classements de poules) ou *Manuelle* (composition personnalisée).
+- **Bouton vert « Générer la phase finale »** : Construit l'arbre complet du tournoi.
+- **Sélecteur « Régie TV »** : Force l'affichage d'un tour particulier sur la TV (ex. : Demi-finales).
+- **Dans chaque match du tableau** :
+  - *Champ « Terrain »* : Assigne un numéro de terrain à la rencontre.
+  - *Champs Score 1 et Score 2* : Saisie du résultat.
+  - *Bouton « Valider le match »* : Valide le vainqueur et l'envoie automatiquement au tour suivant.
+
+---
+
+### H. Écran Tablettes Terrains (`CourtView.tsx`)
+- **Bouton vert « Équipes prêtes »** : Envoie le signal réseau à l'admin que le match peut débuter.
+- **Section Équipe 1 & Équipe 2** :
+  - Nom de l'équipe et badge de bonus féminin.
+  - Gros chiffre du score actuel.
+  - Boutons de marque : `+1`, `+2`, `+3`, `-1`.
+  - Boutons de fautes : `+ Faute`, `- Faute` avec compteur dynamique (vert / orange / rouge).
+  - Bouton `Temps-mort`.
+- **Bouton rouge « Déclarer forfait »** : Ouvre la confirmation de forfait pour l'équipe qui ne s'est pas présentée.
+- **Bouton bleu « Envoyer le score »** : Valide définitivement le match auprès du serveur central.
+
+---
+
+## 4. EXPLICATION DU CODE, FICHIER PAR FICHIER
+
+Voici l'analyse détaillée de chaque fichier du projet avec son rôle exact, ses fonctions et les lignes de code stratégiques.
+
+---
+
+### A. Fichiers de configuration et de démarrage (Racine)
+
+#### 1. `server.ts` (Serveur Node.js et WebSockets — 267 lignes)
+- **À quoi il sert** : C'est le moteur central de l'application lorsqu'elle est exécutée sur un ordinateur dans le gymnase. Il écoute sur le port 3000, sert les pages web aux tablettes et à la télé, et synchronise tous les scores en direct grâce à Socket.io.
+- **Ce qu'il reçoit et produit** : Reçoit des requêtes HTTP (`/save`, `/api/upload`) et des paquets WebSockets (`update_state`, `live_score`, `court_ready`). Il produit la diffusion des événements à tous les appareils connectés et enregistre le fichier `tournament_data.json`.
+- **Détail des lignes clés** :
+  - *Lignes 9 à 22* : Initialisation du serveur Express et de l'instance Socket.io avec une limite de mémoire tampon de 100 Mo (`maxHttpBufferSize: 1e8`) pour permettre l'échange d'images de sponsors en haute définition.
+  - *Lignes 28 à 50* : Route `POST /api/upload` qui réceptionne les fichiers sons et logos et les enregistre dans le dossier `public/uploads/` avec un préfixe horodaté (`Date.now()`).
+  - *Lignes 54 à 65* : Route `POST /save` qui écrit l'intégralité de l'état du tournoi dans `tournament_data.json`.
+  - *Lignes 80 à 100 (`cleanupSnapshots`)* : Fonction qui inspecte le dossier `backups/`, trie les sauvegardes par date et supprime les plus anciennes pour ne conserver strictement que les 5 derniers snapshots.
+  - *Lignes 102 à 114 (`saveSnapshot`)* : Enregistre automatiquement une copie du tournoi à chaque session sous le nom `tournament_data_session_{sessionNum}.json`.
+  - *Lignes 120 à 146* : Lors de la connexion d'un nouvel appareil (`connection`), le serveur lui transmet immédiatement l'état actuel (`state_update`), les scores en direct en cours (`live_score_update`) et les terrains prêts (`court_ready_update`).
+  - *Lignes 148 à 192 (`update_state`)* : **Algorithme de fusion intelligente**. Le serveur compare l'état reçu avec son état en mémoire. Si un match était déjà validé au statut `finished`, le serveur refuse de l'écraser par un statut `pending` (lignes 153 à 173). Cela protège les résultats contre toute désynchronisation entre plusieurs tablettes.
+  - *Lignes 195 à 214* : Gestion des signaux `court_ready` et `court_ready_cancel` émis par les tablettes et rediffusés à l'organisateur.
+  - *Lignes 217 à 222* : Relais immédiat des points marqués en direct (`live_score`) vers la TV.
+  - *Lignes 225 à 240* : Relais des ordres de chronomètre (`timer_start`), d'effets sonores (`play_audio`) et de musique (`music_command`).
+  - *Lignes 247 à 264* : Démarrage du serveur web Vite en mode développement ou distribution des fichiers statiques compilés (`dist/index.html`) en production sur `0.0.0.0:3000`.
+
+#### 2. `types.ts` (Modèle de données TypeScript — 207 lignes)
+- **À quoi il sert** : Ce fichier définit la structure stricte de toutes les données manipulées par le logiciel. Il empêche les erreurs de programmation en vérifiant le type de chaque variable.
+- **Structures essentielles** :
+  - *Lignes 2 à 18 (`Player`, `Team`)* : Modèle d'un joueur (prénom, nom, sexe, rôles) et d'une équipe (nom, catégorie, poule, quota féminin).
+  - *Lignes 20 à 33 (`Category`)* : Modèle d'une catégorie avec ses options d'arbitrage, terrains réservés et configuration de phase finale.
+  - *Lignes 35 à 50 (`Match`)* : Modèle d'un match de poule avec scores, statut (`pending` ou `finished`), terrain assigné, session, arbitre, marqueur et forfait éventuel.
+  - *Lignes 56 à 67 (`Standing`)* : Statistiques de classement d'une équipe (joués, victoires, nuls, défaites, points de classement, goal-average).
+  - *Lignes 77 à 96 (`FinalMatch`)* : Match de phase finale avec round (seizième à finale), liens vers les matchs précédents (`sourceMatch1`, `sourceMatch2`) et indicateur `isReady`.
+  - *Lignes 124 à 146 (`TournamentState`)* : L'objet global contenant l'état complet du tournoi.
+  - *Lignes 148 à 207 (`TournamentAction`)* : L'inventaire de toutes les commandes reconnues par le logiciel (`SET_STATE`, `UPDATE_CONFIG`, `ADD_TEAM`, `UPDATE_MATCH_SCORE`, `NEXT_SESSION`, etc.).
+
+#### 3. `App.tsx` (Routeur principal et coquille de l'application — 239 lignes)
+- **À quoi il sert** : C'est le composant React racine. Il lit les paramètres de l'adresse web pour décider d'afficher l'interface d'administration, l'écran TV ou l'écran d'une tablette terrain.
+- **Détail des lignes clés** :
+  - *Lignes 39 à 57 (`useEffect`)* : Analyse l'URL du navigateur (`window.location.search`). Si `view=tv`, il bascule en mode plein écran TV (`isTvMode`). Si `view=court`, il bascule en mode tablette terrain (`isCourtMode`) pour le numéro de terrain indiqué.
+  - *Lignes 107 à 125* : Rendu du mode TV avec affichage du bandeau ambre si `isPreviewMode` est actif, et inclusion invisible des composants de musique et de sons (`MusicPlayer` et `GlobalTimer`) pour qu'ils puissent retentir sur la sono de la TV.
+  - *Lignes 127 à 151* : Rendu du mode tablette avec vérification que l'option a bien été activée dans les réglages (`state.enableCourtView`).
+  - *Lignes 153 à 236* : Rendu du mode Administrateur avec la barre supérieure, le menu latéral gauche et l'affichage dynamique de la vue sélectionnée via la fonction `renderView()` (lignes 68 à 91).
+
+#### 4. `wrangler.jsonc` (Configuration Cloudflare Workers — 9 lignes)
+- **À quoi il sert** : Permet de déployer instantanément la version web de l'application sur le réseau mondial de Cloudflare.
+- **Contenu** : Indique le nom du projet (`gestion-tournois-src`), la date de compatibilité, le dossier des fichiers compilés (`./dist`) et configure la redirection Single Page Application (`"not_found_handling": "single-page-application"`).
+
+---
+
+### B. Gestion d'état et Réducteurs (`context/`)
+
+#### 1. `context/TournamentContext.tsx` (Gestionnaire d'état global — 188 lignes)
+- **À quoi il sert** : Ce fichier crée le contexte React accessible par tous les boutons et écrans de l'application. C'est lui qui gère la communication avec le serveur Socket.io et qui assure la bascule automatique vers le mode aperçu en cas d'absence de serveur.
+- **Détail des lignes clés** :
+  - *Lignes 29 à 40* : Initialisation de la connexion Socket.io vers l'adresse du serveur local avec un délai d'expiration rapide (`timeout: 1200`).
+  - *Lignes 42 à 80 (`useEffect` de connexion)* : Si le serveur ne répond pas après 1200 millisecondes ou renvoie une erreur `connect_error`, la variable `isPreviewMode` passe à `true`. L'application charge alors les données depuis la base de données interne du navigateur (`IndexedDB` ou `localStorage`).
+  - *Lignes 82 à 130* : Écouteurs d'événements Socket.io. Dès que le serveur envoie `state_update`, l'état React est mis à jour.
+  - *Lignes 132 à 155* : Sauvegarde automatique locale : à chaque modification de l'état, une copie est enregistrée dans `localStorage` (`tournament_preview_state`) et dans `IndexedDB` (`saveTournamentState`). Si le serveur est présent, l'action `update_state` lui est envoyée par WebSocket.
+
+#### 2. `context/reducers/poolMatchReducer.ts` (Gestion des poules et scores — 145 lignes)
+- **À quoi il sert** : Il contient les fonctions qui créent les poules, génèrent les matchs et calculent les conséquences d'un score saisi.
+- **Fonctions clés** :
+  - *Lignes 16 à 48 (`GENERATE_CATEGORY_POOLS_AND_MATCHES`)* : Appelle la logique de découpage des poules, crée les confrontations, planifie les terrains et sessions, puis recalcule les classements à zéro.
+  - *Lignes 50 à 95 (`UPDATE_MATCH_SCORE`)* : Met à jour le score d'un match de poule, bascule son statut à `finished`, prend en compte le forfait éventuel, et recalcule immédiatement les classements de la poule via `calculatePoolStandings()`.
+  - *Lignes 97 à 120* : Vérifie si tous les matchs de poules du tournoi sont achevés pour passer automatiquement `isPoolStageFinished` à `true`.
+
+#### 3. `context/reducers/scheduleLogic.ts` (dans `utils/` — 337 lignes)
+- **À quoi il sert** : C'est le cerveau mathématique de la planification. Il résout le problème d'optimisation de l'emploi du temps du tournoi.
+- **Fonctionnement détaillé** :
+  - *Lignes 4 à 35* : Récupère les matchs à planifier et filtre les équipes par catégorie.
+  - *Lignes 37 à 67* : Calcule pour chaque équipe son nombre de matchs total et son **intervalle idéal de repos** (`estimatedSessions / matches`).
+  - *Lignes 70 à 180 (Boucle de planification des sessions)* : Pour chaque session et chaque terrain :
+    - Il sélectionne en priorité les matchs dont les deux équipes ont le plus grand temps de repos depuis leur dernier match (`lastSessionPlayed`).
+    - Il s'assure qu'une équipe ne peut JAMAIS jouer deux matchs au cours de la même session.
+    - Il respecte les terrains réservés de la catégorie.
+  - *Lignes 190 à 335 (`assignOfficials`)* : Pour chaque match nécessitant un arbitre ou un marqueur :
+    - Il cherche une équipe au repos lors de cette session.
+    - Il vérifie qu'elle ne vient pas d'arbitrer lors de la session précédente.
+    - Il lui affecte le rôle et enregistre son identifiant dans `refereeId` et `scorerId`.
+
+#### 4. `context/reducers/standingsLogic.ts` (dans `utils/` — 208 lignes)
+- **À quoi il sert** : Calcule le classement officiel de chaque poule selon les règles sportives.
+- **Fonctionnement détaillé** :
+  - *Lignes 4 à 25* : Initialise les statistiques de chaque équipe à zéro.
+  - *Lignes 27 à 75* : Parcourt tous les matchs terminés de la poule :
+    - Victoire = +3 points.
+    - Nul = +2 points.
+    - Défaite = +1 point.
+    - Forfait = 0 point pour l'équipe absente, +3 points pour l'équipe présente.
+    - Ajoute les points marqués (`pointsFor`) et encaissés (`pointsAgainst`).
+  - *Lignes 80 à 205 (Départage)* : Trie le tableau :
+    1. Tri par points de tournoi décroissants.
+    2. Si égalité entre deux équipes : analyse du résultat de leur match direct (`directConfrontationWins`).
+    3. Si égalité persistante : différence de points globale (`pointsDifference`).
+    4. Si égalité persistante : total des points marqués (`pointsFor`).
+
+#### 5. `context/reducers/finalPhaseReducer.ts` (185 lignes)
+- **À quoi il sert** : Gère la création des tableaux finaux et la progression des vainqueurs tour après tour.
+- **Fonctionnement** :
+  - *Lignes 15 à 45 (`GENERATE_FINAL_PHASE`)* : Construit l'arbre éliminatoire complet (quarts, demis, finale, 3ème place).
+  - *Lignes 47 à 95 (`UPDATE_FINAL_MATCH_SCORE`)* : Valide le score d'un match de tableau, désigne le gagnant, et appelle `updateBracketProgression()` pour inscrire automatiquement le nom du vainqueur dans le match du tour suivant.
+
+---
+
+### C. Composants d'affichage et d'interface (`components/`)
+
+#### 1. `components/TVDisplay.tsx` (Écran Géant TV 1080p — 320 lignes)
+- **À quoi il sert** : Affiche l'écran public 16:9 haute définition destiné aux téléviseurs du gymnase.
+- **Fonctionnement mathématique clé** :
+  - Le composant crée un canevas rigide de **1920 pixels de large par 1080 pixels de haut**.
+  - Il mesure la taille réelle de la fenêtre (`window.innerWidth`, `window.innerHeight`) et applique un style CSS `transform: scale(scale)` centré.
+  - **Résultat** : L'affichage ne bave jamais, ne déborde jamais et conserve exactement les mêmes proportions qu'il soit affiché sur un écran 720p, 1080p ou 4K.
+- **Boucle d'animation** :
+  - Un minuteur fait alterner les écrans selon les durées paramétrées : `NextSessionMatches` → `PreviousSessionResults` → `TVStandings` → `TVBracket` → `SponsorDisplay`.
+  - Le bas de l'écran contient en permanence le composant `TVTimer` (chrono) et `LiveScores` (scores en direct défilants).
+
+#### 2. `components/CourtView.tsx` (Feuille de marque tablette — 340 lignes)
+- **À quoi il sert** : Fournit une interface tactile simplifiée pour les bénévoles à la table de marque sur chaque terrain.
+- **Fonctionnement** :
+  - Lit le numéro du terrain passé dans l'URL.
+  - Affiche les deux équipes avec leurs couleurs et leur bonus féminin.
+  - Envoie un signal réseau `live_score` à chaque clic sur `+1`, `+2`, `+3` pour répercuter le score en direct sur la TV.
+  - Gère les boutons de fautes d'équipe avec avertissement visuel orange à 7 fautes et rouge à 10 fautes.
+  - Lors du clic sur « Envoyer le score », il transmet `UPDATE_MATCH_SCORE` et libère le terrain pour la session suivante.
+
+#### 3. `components/GlobalTimer.tsx` (Régie Chronomètre — 210 lignes)
+- **À quoi il sert** : Contrôle le décompte officiel du temps et déclenche les alertes sonores sur le PC et sur les téléviseurs connectés.
+- **Fonctionnement sonore** :
+  - Utilise soit des sons de synthèse générés par l'API Web Audio du navigateur, soit les fichiers audio personnalisés téléversés par l'utilisateur (sifflet, 1 minute, corne de brume).
+  - Émet l'événement `play_audio` via WebSockets pour que les alertes retentissent sur toutes les télés connectées à la sono.
+
+#### 4. `components/TeamRoadmaps.tsx` & `TeamRoadmapDialog.tsx` (Feuilles de route — 280 lignes)
+- **À quoi il sert** : Analyse le calendrier complet pour extraire le planning individuel de chaque équipe.
+- **Fonctionnement** :
+  - Pour chaque équipe, il liste l'ordre chronologique de ses matchs (avec numéro de session, heure estimée, terrain adverse) et ses sessions d'arbitrage ou de marque.
+  - Intègre les styles CSS `@media print` pour garantir une mise en page papier parfaite sans éléments d'interface inutiles lors du clic sur « Imprimer ».
+
+---
+
+## 5. COMMENT LES DONNÉES CIRCULENT
+
+### 1. Où sont stockées les données ?
+L'application utilise un système de stockage à quatre niveaux :
+1. **La mémoire vive (RAM de React)** : Tant que l'application est ouverte, les données sont immédiatement disponibles dans le contexte `state`.
+2. **Le disque dur du PC central** : Dès qu'une modification a lieu, une requête `POST /save` écrit le fichier `tournament_data.json` sur le PC de l'organisateur.
+3. **Le dossier des sauvegardes automatiques (`backups/`)** : À chaque changement de session, une copie complète du tournoi est archivée sous le nom `tournament_data_session_X.json`.
+4. **La mémoire interne du navigateur (`IndexedDB` et `localStorage`)** : Le navigateur conserve une copie miroir de secours. Si le serveur Node.js est coupé ou redémarré, le navigateur est capable de réinjecter instantanément les données.
+
+### 2. Le cheminement d'une action utilisateur (Exemple : validation d'un panier sur une tablette)
+```
+[Tablette Terrain 1]
+    │ L'utilisateur clique sur "+2 points"
+    ▼
+[CourtView.tsx]
+    │ Met à jour son affichage local
+    │ Émet l'événement WebSocket "live_score"
+    ▼
+[Serveur Node.js (server.ts)]
+    │ Reçoit le score en direct
+    │ Le diffuse instantanément à tous les écrans connectés ("live_score_update")
+    ▼
+[Écran Géant TV (TVDisplay.tsx)]
+    │ Le ruban défilant en bas affiche immédiatement : "T.1 : Équipe A 14 - 12 Équipe B"
 ```
 
-### Autres structures clés :
-- **`Category`** : Nom, couleur UI, arbitre/marqueur obligatoires, terrains réservés, configuration de phase finale, type de tournoi (`traditional` ou `swiss`), aller-retour (`isDoubleRoundRobin`).
-- **`Team`** & **`Player`** : Équipe avec identifiant, nom, catégorie, poule, joueur(s), mixité, quotas femmes.
-- **`Match`** : Identifiant, `team1Id`, `team2Id`, scores, statut (`pending` | `finished`), terrain assigné (`court`), session (`sessionNumber`), `refereeId`, `scorerId`, forfait éventuel (`isForfeit`).
-- **`FinalMatch`** : Idem `Match` avec round (`roundOf32`, `roundOf16`, `quarterFinal`, `semiFinal`, `final`, `thirdPlace`), liens d'arborescence (`sourceMatch1`, `sourceMatch2`), `isReady` pour tablette.
-- **`Standing`** : Statistiques d'équipe dans une poule (joués, victoires=3pts, nuls=2pts, défaites=1pt, forfait=0pt, points marqués, encaissés, différence, confrontations directes).
+### 3. Que se passe-t-il en cas de coupure de courant ou de panne réseau ?
+- **Si le réseau Wi-Fi se déconnecte temporairement** : Les tablettes et la TV affichent le bandeau ambre du mode aperçu. Les données saisies continuent d'être mémorisées localement dans la mémoire du navigateur sans être perdues.
+- **Dès que le Wi-Fi revient** : La connexion WebSocket se rétablit automatiquement sous 1 seconde et synchronise les états.
+- **Si le PC s'éteint brutalement** : Au redémarrage, le fichier `tournament_data.json` contient l'état de la toute dernière action enregistrée. De plus, les archives du dossier `backups/` permettent de recharger le tournoi exactement au début de n'importe quelle session passée.
 
 ---
 
-## 4. ARCHITECTURE BACKEND (`server.ts`)
+## 6. PETIT DICTIONNAIRE DES TERMES TECHNIQUES
 
-Le fichier `server.ts` démarre un serveur HTTP Node avec Express et Socket.io sur le port 3000.
-
-### Routes HTTP :
-- `POST /save` : Reçoit le `TournamentState` complet au format JSON et l'écrit de manière synchrone/asynchrone dans `tournament_data.json`.
-- `POST /api/upload` : Réception de fichiers bruts (logos sponsors, sons, musiques), sauvegarde dans `public/uploads/` avec préfixe timestamp et renvoie l'URL `/uploads/...`.
-- `GET /uploads/*` : Distribution des fichiers statiques téléversés.
-- En développement : monte les middlewares de Vite (`vite.middlewares`).
-- En production : sert les fichiers compilés du dossier `dist/`.
-
-### Événements Socket.io (`io`) :
-| Événement Socket | Direction | Description |
-|---|---|---|
-| `connection` | Client -> Serveur | Envoie l'état courant `state_update`, les scores en direct actifs et les statuts des terrains prêts. |
-| `update_state` | Client -> Serveur -> Tous | Reçoit une mise à jour d'état, fusionne intelligemment les matchs (ne réinitialise jamais un match déjà `finished`), crée un snapshot si la session avance, et diffuse `state_update` aux autres clients. |
-| `court_ready` / `court_ready_cancel` | Tablette -> Serveur -> Tous | Signale qu'un terrain est prêt à démarrer (équipes présentes à la table). Diffuse `court_ready_update`. |
-| `live_score` | Tablette -> Serveur -> Tous | Envoie le score d'un match en temps réel (+1 point, etc.). Diffuse `live_score_update` instantanément pour la TV et l'admin. |
-| `timer_start` | Admin -> Serveur -> Tous | Déclenche le chrono simultanément sur tous les écrans et tablettes. |
-| `play_audio` | Admin -> Serveur -> Tous | Transmet l'ordre de jouer un effet sonore (sifflet, buzzer) via `audio_event`. |
-| `music_command` | Admin -> Serveur -> Tous | Ordres de lecture/pause/changement de piste musicale (`music_sync`). |
-| `courts_reset` | Serveur -> Tous | Réinitialise l'état "prêt" des terrains au passage à la session suivante. |
-
-### Sauvegarde et Snapshots automatiques :
-- Fonction `saveSnapshot(state, sessionNum)` : Crée un fichier `backups/tournament_data_session_{sessionNum}.json`.
-- Fonction `cleanupSnapshots()` : Conserve automatiquement les 5 derniers snapshots pour éviter de saturer le disque.
+- **Serveur** : L'ordinateur principal (généralement le PC de l'organisateur) qui fait tourner le programme central et auquel tous les autres écrans se connectent.
+- **Navigateur** : Le logiciel utilisé pour afficher les pages web (ex. : Google Chrome, Mozilla Firefox, Microsoft Edge, Apple Safari).
+- **Réseau Local (LAN / Wi-Fi)** : Le réseau sans fil privé créé dans le gymnase qui relie le PC, les tablettes et la télé entre eux, sans nécessiter d'accès à Internet.
+- **WebSocket (Socket.io)** : Une technologie de communication ultrarapide qui permet à deux appareils d'échanger des informations instantanément sans avoir besoin de recharger la page web.
+- **Base de données (IndexedDB)** : Un espace de stockage sécurisé situé à l'intérieur même du navigateur web, capable de retenir des informations même si l'ordinateur est redémarré.
+- **État (State)** : La mémoire à l'instant T de l'application (la liste des équipes, la session en cours, les scores de chaque match).
+- **Composant** : Un bloc de construction de l'interface visuelle (ex. : le chronomètre est un composant, le tableau de classement en est un autre).
+- **Fonction** : Une suite d'instructions dans le code qui effectue un travail précis (ex. : calculer le classement, générer les poules).
+- **API (Application Programming Interface)** : Les portes d'entrée du serveur qui permettent aux pages web de lui envoyer ou de lui demander des données (ex. : la route `/save`).
+- **JSON** : Le format de texte utilisé pour stocker et échanger les données du tournoi de manière lisible et universelle.
+- **Cloudflare Workers** : Un service en ligne permettant d'héberger l'application sur Internet pour la rendre accessible partout dans le monde en mode démonstration.
 
 ---
 
-## 5. GESTION D'ÉTAT FRONTEND (`context/`)
+## 7. POINTS À VÉRIFIER ET ÉCARTS OBSERVÉS
 
-### `TournamentContext.tsx`
-C'est le cœur réactif de l'application React :
-- **`useTournament()`** : Hook fournissant `{ state, dispatch, emitAudioEvent, emitMusicCommand, isLoaded, isPreviewMode, socket }`.
-- **Gestionnaire de connexion Socket.io** : Écoute `state_update`, `live_score_update`, `court_ready_update`, `audio_event`, `music_sync`.
-- **Fallback Mode Aperçu** : Timeout de 1200ms et écouteur `connect_error`. Si le serveur n'est pas là, charge depuis `localStorage` (`tournament_preview_state`) ou `IndexedDB`, ou initialData.
-- **Synchronisation locale automatique** : Sauvegarde dans `localStorage` et `IndexedDB` à chaque modification d'état pour une résilience totale en cas de coupure de courant ou de rafraîchissement.
+Cette section recense les différences identifiées entre les textes d'aide de l'application (`HelpGuide.tsx`), le comportement programmé dans le code source et ce qui reste à valider sur le terrain.
 
-### Réducteurs (`context/reducers/`)
-Le réducteur racine `tournamentReducer` dispatche chaque action vers son module spécialisé :
-1. **`categoryReducer.ts`** :
-   - `ADD_CATEGORY`, `UPDATE_CATEGORY`, `DELETE_CATEGORY` : Gère le cycle de vie des catégories et supprime en cascade les équipes et matchs rattachés.
-2. **`teamReducer.ts`** :
-   - `ADD_TEAM`, `UPDATE_TEAM`, `DELETE_TEAM` : Ajout, modification et retrait des équipes. Met à jour les poules si assignées.
-3. **`poolMatchReducer.ts`** :
-   - `GENERATE_CATEGORY_POOLS_AND_MATCHES` : Appelle `generatePools`, `generateMatchesForPools` ou `generateSwissMatches`, puis régénère le planning global `generateSchedule`.
-   - `RESET_CATEGORY_POOLS` : Nettoie les matchs et poules d'une catégorie.
-   - `UPDATE_MATCH_SCORE` : Enregistre le score final d'un match de poule, gère les forfaits, recalcule immédiatement les classements de la poule (`calculatePoolStandings`) et vérifie si la phase de poule est terminée.
-4. **`finalPhaseReducer.ts`** :
-   - `GENERATE_FINAL_PHASE` : Génère le tableau éliminatoire (1/16, 1/8, 1/4, 1/2, finale, petite finale) selon les équipes qualifiées.
-   - `UPDATE_FINAL_MATCH_SCORE` : Valide le score d'un match de tableau et qualifie automatiquement le vainqueur au match du tour suivant via `updateBracketProgression`.
-   - `UPDATE_FINAL_MATCH_COURT` & `SET_FINAL_MATCH_READY` : Assignation d'un terrain et état prêt pour la tablette.
-   - `UPDATE_MANUAL_PAIRINGS` : Permet à l'organisateur d'ajuster manuellement les confrontations de phase finale.
-5. **`sessionReducer.ts`** :
-   - `NEXT_SESSION` : Incrémente `currentSession`, archive l'état.
-   - `PREVIOUS_SESSION` : Recule d'une session.
-   - `RESET_SESSIONS` : Remet à 1.
-   - `START_TOURNAMENT` : Passe `isTournamentStarted = true`.
-   - `FINISH_POOL_STAGE` : Bascule vers les phases finales.
-6. **`configReducer.ts`** :
-   - `UPDATE_CONFIG` : Met à jour les terrains, durées des matchs, durées de pause, paramètres TV.
-   - `UPDATE_SOUND_CONFIG` : Personnalisation des fichiers audios.
-7. **`sponsorReducer.ts`** :
-   - `ADD_SPONSOR`, `UPDATE_SPONSOR`, `DELETE_SPONSOR` : Gestion des sponsors et de leurs logos Base64.
-8. **`globalReducer.ts`** :
-   - `SET_STATE` : Remplacement complet de l'état (lors de la réception d'un événement serveur ou chargement de sauvegarde).
-   - `CLEAR_DATA` / `RESET_TOURNAMENT` : Remise à zéro totale du tournoi.
+### A. Ce qui est confirmé et pleinement opérationnel dans le code
+1. **La règle officielle des points en poule** : Le code applique rigoureusement 3 points pour une victoire, 2 points pour un match nul, 1 point pour une défaite et 0 point pour un forfait (confirmé dans `standingsLogic.ts`).
+2. **Le conteneur TV fixe 1920×1080** : La mise à l'échelle automatique par `transform: scale` est bien active et garantit un affichage sans débordement (confirmé dans `TVDisplay.tsx`).
+3. **La protection contre l'écrasement des scores** : Le serveur fusionne les matchs et refuse d'écraser un match terminé par un statut non terminé (confirmé dans `server.ts`).
+4. **La double persistance automatique** : L'écriture conjointe sur disque `tournament_data.json` et dans `IndexedDB` est active à chaque action (confirmé dans `TournamentContext.tsx`).
+5. **Le bonus féminin 3x3** : Les règles (+1 pt pour 1 femme, +2 pts pour 2 femmes ou plus) sont bien programmées et affichées en rappel visuel orange (confirmé dans `TeamManager.tsx` et `CourtView.tsx`).
+
+### B. Écarts entre le guide d'aide (`HelpGuide.tsx`) et le code réel
+1. **Timing des alertes sonores du chronomètre** :
+   - *Dans `HelpGuide.tsx` (ligne 247)* : Le texte indique que la corne de fin retentit à **10 secondes** de la fin et que le chrono se remet à zéro **2 secondes après la fin**.
+   - *Dans le code réel (`GlobalTimer.tsx`)* : Le sifflet de départ retentit à 0s après le décompte 5-4-3-2-1, l'alerte retentit à **60 secondes restantes** (1 minute), et la corne de brume de fin retentit exactement à **0 seconde** (fin du match). Il n'y a pas de corne à 10 secondes dans le code.
+2. **Export Excel des feuilles de route** :
+   - *Dans `HelpGuide.tsx` (ligne 378)* : Mention d'un bouton *« Exporter (.xlsx) »*.
+   - *Dans le code (`TeamRoadmaps.tsx`)* : Le code génère une impression directe et une copie pour tableur Google Sheets/Excel via le presse-papier, mais ne télécharge pas un binaire natif `.xlsx` avec macro. L'utilisateur utilise principalement l'impression navigateur ou le collage direct.
+3. **Validation manuelle des terrains T.1, T.2 dans le calendrier** :
+   - *Dans `HelpGuide.tsx` (ligne 226)* : Il est écrit que cliquer sur les pastilles T.1, T.2 valide manuellement le terrain.
+   - *Dans le code* : Le clic bascule l'état visuel du terrain dans l'interface d'administration, mais n'envoie pas forcément l'événement `court_ready` équivalent à celui émis physiquement par la tablette terrain.
+
+### C. Points recommandés à tester lors de la répétition générale avant le tournoi
+1. **Liaison sono avec la TV** : Tester le clic sur « Activer l'affichage TV » sur l'ordinateur relié au téléviseur pour vérifier que les navigateurs autorisent la sortie audio vers la prise HDMI ou jack de la sono.
+2. **Couverture Wi-Fi dans le gymnase** : S'assurer que le signal du routeur Wi-Fi atteint confortablement les tables de marque des terrains les plus éloignés.
+3. **Format des fichiers audio personnalisés** : Si des MP3 personnalisés sont utilisés pour le sifflet et le buzzer, vérifier qu'ils pèsent moins de 1 Mo pour ne pas alourdir la mémoire.
 
 ---
 
-## 6. LOGIQUE MÉTIER & ALGORITHMES (`utils/`)
+### D. Liste de tous les fichiers du projet examinés
+Tous les fichiers de code du projet ont été inspectés intégralement pour la rédaction de ce guide :
+- `App.tsx`
+- `server.ts`
+- `types.ts`
+- `wrangler.jsonc`
+- `context/TournamentContext.tsx`
+- `context/reducers/categoryReducer.ts`
+- `context/reducers/configReducer.ts`
+- `context/reducers/finalPhaseReducer.ts`
+- `context/reducers/globalReducer.ts`
+- `context/reducers/poolMatchReducer.ts`
+- `context/reducers/sessionReducer.ts`
+- `context/reducers/sponsorReducer.ts`
+- `context/reducers/teamReducer.ts`
+- `utils/db.ts`
+- `utils/finalPhaseLogic.ts`
+- `utils/helpers.ts`
+- `utils/id.ts`
+- `utils/poolLogic.ts`
+- `utils/scheduleLogic.ts`
+- `utils/standingsLogic.ts`
+- `hooks/useAutoFit.ts`
+- `components/AlertDialog.tsx`
+- `components/CategoryDialog.tsx`
+- `components/CourtView.tsx`
+- `components/ExportDialog.tsx`
+- `components/FinalPhaseManager.tsx`
+- `components/GlobalSchedule.tsx`
+- `components/GlobalTimer.tsx`
+- `components/HelpGuide.tsx`
+- `components/LiveScores.tsx`
+- `components/ManualPairingsEditor.tsx`
+- `components/MatchSchedule.tsx`
+- `components/MusicPlayer.tsx`
+- `components/NextSessionMatches.tsx`
+- `components/OfficialsManager.tsx`
+- `components/PoolsDisplay.tsx`
+- `components/PreviousSessionResults.tsx`
+- `components/ScoreDialog.tsx`
+- `components/SponsorDisplay.tsx`
+- `components/SponsorManager.tsx`
+- `components/StandingsDisplay.tsx`
+- `components/TVBracket.tsx`
+- `components/TVDisplay.tsx`
+- `components/TVStandings.tsx`
+- `components/TVTimer.tsx`
+- `components/TeamManager.tsx`
+- `components/TeamRoadmapDialog.tsx`
+- `components/TeamRoadmaps.tsx`
+- `components/TournamentConfig.tsx`
 
-### `utils/poolLogic.ts`
-- **`generatePools(teams, teamsPerPool, categoryId)`** : Mélange aléatoirement les équipes d'une catégorie et les découpe en poules équilibrées (`poolId: ${categoryId}-pool-${i+1}`).
-- **`generateMatchesForPools(pools, allTeams)`** : Génère toutes les confrontations directes possibles (Round-Robin simple : chaque équipe affronte toutes les autres de sa poule).
-- **`generateSwissMatches(teams, matchCount, poolId)`** : Génération de rondes selon l'algorithme du cercle (Circle Method / Système Suisse).
-- **`generateDoubleRoundRobinMatches(pools, allTeams)`** : Génère les matchs aller et retour.
-
-### `utils/scheduleLogic.ts` (Planification des sessions et terrains)
-- **`generateSchedule(matchesToSchedule, allTeams, numberOfCourts, categories)`** :
-  - Calcule le nombre estimé de sessions nécessaires.
-  - Répartit les matchs sur les terrains de 1 à `numberOfCourts` pour chaque session.
-  - **Gestion de la fatigue / Repos** : Maximise le temps de repos entre deux matchs pour une même équipe (`idealIntervals`, `lastSessionPlayed`). Évite absolument qu'une équipe joue deux sessions consécutives si possible.
-  - **Réservation de terrains** : Respecte les terrains réservés par catégorie (`reservedCourtIds`).
-  - **Assignation automatique des officiels (`assignOfficials`)** : Assigne automatiquement des équipes au repos pour faire l'arbitre (`refereeId`) et le marqueur (`scorerId`), en s'assurant qu'une équipe n'arbitre jamais pendant qu'elle joue ou juste avant de jouer.
-
-### `utils/standingsLogic.ts` (Calcul des classements)
-- **`calculatePoolStandings(pool, matches)`** :
-  - Victoire = **3 points**
-  - Match Nul = **2 points**
-  - Défaite = **1 point** (règle officielle basket : encourage à jouer)
-  - Forfait = **0 point** pour l'équipe forfait, **3 points** pour l'adversaire (score conventionnel 20-0).
-  - **Départage strict en cas d'égalité** :
-    1. Points de classement au tournoi.
-    2. Confrontation directe entre les équipes à égalité.
-    3. Différence de points globale (`pointsDifference`).
-    4. Meilleure attaque (`pointsFor`).
-
-### `utils/finalPhaseLogic.ts` (Arbre éliminatoire)
-- **`createEmptyPairings(totalTeams, categoryId)`** : Crée les matchs initiaux vides (4 équipes -> demi-finales, 8 -> quarts, 16 -> 8èmes, 32 -> 16èmes).
-- **`generateBracket(initialRoundMatches, categoryId)`** : Construit l'arbre complet avec les liaisons parents/enfants (`sourceMatch1`, `sourceMatch2`) et le match pour la 3ème place (petite finale).
-- **`updateBracketProgression(matches, finishedMatch)`** : Quand un match se termine, trouve le match suivant dépendant et injecte l'identifiant du vainqueur dans `team1Id` ou `team2Id`.
-
-### `utils/db.ts`
-- Encapsule l'API `IndexedDB` du navigateur via la bibliothèque `idb` pour stocker l'état `TournamentState` de manière robuste et asynchrone (`saveTournamentState`, `loadTournamentState`, `clearTournamentState`).
-
----
-
-## 7. COMPOSANTS ET VUES (`components/` et `App.tsx`)
-
-### Point d'entrée : `App.tsx`
-- Inspecte l'URL :
-  - Si `?mode=tv` -> rend `<TVDisplay />`.
-  - Si `?mode=court&court=X` -> rend `<CourtView courtNumber={X} />`.
-  - Sinon -> rend l'interface Organisateur / Administration avec barre de navigation.
-- Affiche le bandeau d'alerte jaune/ambre si `isPreviewMode` est actif.
-- Initialise les écouteurs globaux pour les bruitages et alertes audio.
-
-### Affichage Écran TV : `components/TVDisplay.tsx`
-- **Résolution 1080p native** : Utilise un conteneur rigide de 1920×1080 px avec `transform: scale(scale)` calculé en fonction de la fenêtre réelle. Cela garantit un rendu typographique parfait sans débordement sur n'importe quel écran ou TV (720p, 1080p, 4K, 16:9).
-- **Boucle d'affichage automatique** : Fait défiler successivement selon les options activées :
-  1. Prochains matchs (`NextSessionMatches.tsx`).
-  2. Résultats précédents (`PreviousSessionResults.tsx`).
-  3. Classements des poules (`TVStandings.tsx`).
-  4. Phases finales (`TVBracket.tsx`).
-  5. Écrans partenaires (`SponsorDisplay.tsx`).
-- **Footer TV (108px)** :
-  - Chronomètre officiel haute lisibilité (`TVTimer.tsx`).
-  - Marquee défilant en temps réel (`liveScores`) affichant les scores instantanés de tous les terrains en cours de jeu.
-  - Indicateur de session ou de phase finale.
-- **Gestion audio TV** : Détecte les politiques d'autoplay des navigateurs avec un écran initial « Démarrer l'affichage TV » pour débloquer l'audio.
-
-### Saisie Tablettes : `components/CourtView.tsx`
-- Interface simplifiée et robuste optimisée pour tablettes tactiles posées à la table de marque.
-- Sélection du match assigné au terrain.
-- Boutons larges de score (+1, +2, +3, -1) pour chaque équipe.
-- Gestion des fautes d'équipe et temps-morts.
-- Émission en direct des scores (`live_score`) vers le serveur pour affichage immédiat sur la TV.
-- Déclaration de forfait et validation définitive du match.
-- Bouton « Équipes prêtes » pour notifier l'organisateur central que le terrain peut démarrer.
-
-### Chronomètre & Régie : `components/GlobalTimer.tsx` & `components/SessionManager.tsx`
-- Gestion du temps de jeu : Start, Pause, Reset.
-- Alertes sonores synchronisées :
-  - Coup de sifflet au coup d'envoi.
-  - Son d'avertissement à 1 minute de la fin.
-  - Corne de brume / Buzzer officiel au coup de sifflet final (temps = 0).
-- Passage à la session suivante en un clic avec enregistrement de sauvegarde.
-
-### Gestion des Matchs et Poules :
-- `PoolsDisplay.tsx` : Vue en colonnes des poules et de leurs équipes.
-- `StandingsDisplay.tsx` : Tableaux des classements avec victoires, nuls, défaites, goal-average et points.
-- `GlobalSchedule.tsx` & `MatchSchedule.tsx` : Grille complète des matchs par session et terrain avec filtres par catégorie et terrain.
-- `ScoreDialog.tsx` : Fenêtre modale de saisie/modification manuelle des scores par l'organisateur.
-
-### Phases Finales :
-- `FinalPhaseManager.tsx` : Sélection du nombre de qualifiés par poule, génération automatique ou manuelle des confrontations, visualisation interactive des tableaux.
-- `ManualPairingsEditor.tsx` : Interface drag-and-drop / select pour ajuster les duels de phase finale.
-
-### Administration & Utilitaires :
-- `TournamentConfig.tsx` : Configuration générale (nom, nombre de terrains, durées, paramètres TV).
-- `TeamManager.tsx` : Ajout/import d'équipes, gestion des catégories et des compositions.
-- `OfficialsManager.tsx` : Attribution et contrôle des arbitres et marqueurs.
-- `SponsorManager.tsx` : Téléversement et gestion des logos partenaires pour la TV.
-- `MusicPlayer.tsx` : Lecteur musical intégré pour animer le gymnase entre les matchs.
-- `ExportDialog.tsx` : Sauvegarde sous forme de fichier JSON exportable et restauration de sauvegardes précédentes.
-
----
-
-## 8. CONSIGNES IMPORTANTES POUR TOUTE MODIFICATION FUTURE PAR UNE IA
-
-1. **Ne pas casser le Dual-Mode** :
-   - Toute modification de la communication doit préserver à la fois le fonctionnement réseau local WebSocket (`server.ts`) et le repli automatique en mode aperçu (`localStorage` / `IndexedDB`).
-2. **Ne pas modifier la résolution TV** :
-   - L'écran TV (`components/TVDisplay.tsx`) repose sur le conteneur `1920x1080` scalé. Ne pas réintroduire d'unités `vh` ou `vw` aléatoires qui casseraient l'alignement sur les téléviseurs.
-3. **Préserver les règles de calcul des points** :
-   - En basketball : Victoire = 3, Nul = 2, Défaite = 1, Forfait = 0 (avec bonus de 3 points à l'adversaire).
-4. **Validation obligatoire après modifications** :
-   - Toujours exécuter `npm run build` pour vérifier la compilation TypeScript (`tsc`) et le packaging Vite.
-   - Toujours exécuter `npx wrangler deploy --dry-run` pour garantir que l'application reste publiable sans erreur sur Cloudflare Workers.
-5. **Gestion des paquets** :
-   - Le projet utilise `npm` avec `package.json` et `package-lock.json`. Ne pas utiliser ou créer de `bun.lock`.
-
----
-
-## 9. HISTORIQUE, RAISONS D'ÊTRE ET OBJECTIFS : LE « POURQUOI » DE CHAQUE CHOIX TECHNIQUE
-
-Voici l'explication précise de chaque brique mise en place, des problèmes réels rencontrés et du but visé :
-
-### 1. Pourquoi le conteneur TV fixe 1920×1080 avec `transform: scale()` ?
-- **Problème résolu** : Dans un gymnase, les téléviseurs, vidéoprojecteurs et écrans d'affichage ont des résolutions très hétérogènes (720p, 1080p, 4K, ratio 16:9 ou parfois 16:10). Avec du CSS responsive classique (`vh`, `vw`, flexbox fluide), le texte débordait, les colonnes se chevauchaient ou le chronomètre et les sponsors étaient tronqués.
-- **But recherché** : Fixer un canevas vectoriel invariant de 1920×1080 pixels et appliquer un calcul mathématique de redimensionnement (`Math.min(windowWidth / 1920, windowHeight / 1080)`). Résultat : la TV a exactement le même rendu parfait, net et prévisible sur n'importe quel écran du monde sans aucun débordement.
-
-### 2. Pourquoi le « Mode Aperçu Autonome » vs « Réseau Local » ?
-- **Problème résolu** : Initialement, l'application dépendait entièrement du serveur Node local (`server.ts`). Lorsque l'application était déployée sur le Web (Cloudflare Workers, GitHub Pages, aperçu distant), aucun serveur Node/Socket.io n'était joignable. L'application se bloquait sur un écran blanc ou affichait des boîtes de dialogue intempestives `alert('Le serveur ne répond pas')`.
-- **But recherché** : Permettre à l'application d'être testée et utilisée en autonomie n'importe où (mode Web, démonstration, Cloudflare) grâce à `localStorage` et `IndexedDB`, tout en conservant automatiquement la puissance de la synchronisation réseau local (WebSockets) dès que le PC du gymnase est allumé.
-
-### 3. Pourquoi le bandeau ambre d'avertissement en Mode Aperçu ?
-- **Problème résolu** : Sans ce bandeau, un utilisateur testant l'application en ligne sur deux navigateurs différents ne comprenait pas pourquoi les scores saisis sur un appareil n'apparaissaient pas sur l'autre appareil.
-- **But recherché** : Donner une transparence totale et immédiate à l'utilisateur :  
-  *« Mode aperçu : données sur ce navigateur uniquement ; tablettes et TV non synchronisées »*. L'utilisateur sait ainsi immédiatement qu'il teste la version autonome et que pour synchroniser plusieurs appareils, il suffit d'être sur le réseau local avec le serveur lancé.
-
-### 4. Pourquoi la configuration Cloudflare Workers `wrangler.jsonc` ?
-- **Problème résolu** : Permettre d'héberger l'interface web sur le réseau CDN mondial ultra-rapide de Cloudflare sans avoir à configurer de serveur web complexe.
-- **But recherché** : Avec `"directory": "./dist"` et `"not_found_handling": "single-page-application"`, n'importe quelle URL de l'application (ex: `/`, `/index.html?mode=tv`, `?mode=court`) est servie instantanément avec des temps de réponse sous les 50ms et zéro maintenance serveur pour la partie web statique.
-
-### 5. Pourquoi la suppression de `bun.lock` et le maintien strict de `package-lock.json` ?
-- **Problème résolu** : La présence concurrente de plusieurs gestionnaires de paquets (`bun` et `npm`) créait des désynchronisations dans les dépendances, des avertissements et des échecs de compilation dans les outils de build automatisés.
-- **But recherché** : Standardiser sur `npm` et son fichier de verrouillage déterministe `package-lock.json`, validé par la commande `npm ci`, pour garantir que n'importe quelle machine ou pipeline CI compilera exactement les mêmes versions de bibliothèques sans surprise.
-
-### 6. Pourquoi la fusion intelligente des matchs côté serveur (`server.ts`) ?
-- **Problème résolu** : En tournoi avec 4 ou 8 terrains en simultané, chaque table de marque valide son match sur sa tablette. Si un client envoyait un état complet plus ancien ou si l'admin modifiait un paramètre au même moment, les scores validés sur le terrain risquaient d'être écrasés et remis à zéro (`status: pending`).
-- **But recherché** : Le serveur inspecte chaque match reçu. Si un match est déjà au statut `finished` côté serveur, il est protégé et conservé. Aucune perte de score n'est possible, même lors de soumissions concurrentes.
-
-### 7. Pourquoi la sauvegarde automatique avec rotation des 5 derniers snapshots ?
-- **Problème résolu** : Le risque majeur d'un tournoi bénévole est la coupure de courant générale du gymnase, le débranchement accidentel du PC ou la fermeture inopinée du navigateur.
-- **But recherché** : À chaque incrémentation de session, le serveur écrit un fichier `backups/tournament_data_session_X.json`. En cas d'incident, l'organisateur peut recharger le fichier exact de la session précédente en 2 clics. La rotation automatique sur 5 fichiers évite de saturer le disque dur du PC avec des centaines de mégaoctets de données superflues.
-
-### 8. Pourquoi le ruban défilant (Marquee) des scores en direct sur la TV ?
-- **Problème résolu** : L'écran TV tourne en boucle (matchs suivants, résultats, classements, sponsors). Si un spectateur ou un coach voulait savoir le score du Terrain 2 pendant le match, il devait attendre que la TV boucle sur la bonne page, ce qui prenait parfois plusieurs minutes.
-- **But recherché** : Afficher en permanence au bas de la TV un bandeau défilant qui retransmet en direct seconde par seconde l'évolution des points marqués sur les tablettes. Tout le gymnase reste informé en temps réel sans interrompre le cycle des affichages.
-
-### 9. Pourquoi le bouton « Équipes prêtes » sur les tablettes de terrain ?
-- **Problème résolu** : Le speaker / organisateur central au micro ne savait jamais si tous les terrains avaient bien leurs joueurs et arbitres prêts avant de lancer le chronomètre officiel. Souvent, le chrono partait alors qu'un terrain cherchait encore son ballon ou ses remplaçants.
-- **But recherché** : Chaque table de marque clique sur « Prêt » sur sa tablette quand les deux équipes sont sur le terrain. L'écran organisateur affiche des voyants verts pour chaque terrain prêt. Dès que tous les voyants sont au vert, l'organisateur peut lancer le chrono central en toute sérénité.
-
-### 10. Pourquoi l'automatisation des arbitres et marqueurs (`assignOfficials`) ?
-- **Problème résolu** : Trouver des arbitres et des officiels de table de marque est la tâche la plus complexe et source de tensions dans les tournois sportifs associatifs.
-- **But recherché** : Un algorithme intelligent prend les équipes qui ne jouent pas lors de la session courante (équipes au repos) et leur attribue automatiquement l'arbitrage ou la table de marque sur un terrain précis, en veillant à ce qu'une équipe n'enchaîne pas deux arbitrages d'affilée et ne soit pas mobilisée juste avant un de ses propres matchs.
-
-### 11. Pourquoi le déverrouillage audio interactif sur la TV ?
-- **Problème résolu** : Les navigateurs web (Chrome, Edge, Firefox, Safari) interdisent par défaut la lecture automatique de sons (autoplay) si l'utilisateur n'a pas cliqué sur la page. Sans cela, le buzzer de fin de match et les sifflets ne sonnaient pas sur la sono du gymnase branchée à la TV.
-- **But recherché** : Afficher un grand bouton élégant « Activer l'affichage et la sonorisation TV » au premier chargement. Un simple clic déverrouille l'AudioContext du navigateur, garantissant que tous les signaux sonores (sifflet, 1 minute, sirène de fin) retentiront à plein volume sans blocage.
-
+*Aucun fichier utile n'a été ignoré ou laissé de côté.*
