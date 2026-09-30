@@ -65,10 +65,13 @@ export const generateBracket = (initialRoundMatches: FinalMatch[], categoryId: s
         currentRound = nextRoundMatches;
     }
     
-    if (currentRound.length === 1 && currentRound[0].round === 'semiFinal') {
-      // Add third place match
-      const semi1 = allMatches.find(m => m.round === 'semiFinal' && m.matchNumber === 1)!;
-      const semi2 = allMatches.find(m => m.round === 'semiFinal' && m.matchNumber === 2)!;
+    const semiFinals = allMatches
+        .filter(match => match.round === 'semiFinal')
+        .sort((a, b) => a.matchNumber - b.matchNumber);
+
+    if (semiFinals.length === 2 && !allMatches.some(match => match.round === 'thirdPlace')) {
+      // The third-place match is played by the two semi-final losers.
+      const [semi1, semi2] = semiFinals;
       allMatches.push({
         id: generateId(),
         categoryId,
