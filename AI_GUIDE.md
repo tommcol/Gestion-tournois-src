@@ -226,10 +226,10 @@ Une catégorie représente une division sportive (ex. : *U13 Garçons*, *Seniors
 ---
 
 ### Étape 12 : Sauvegardes, Exportations et Sécurité
-1. **Double sauvegarde automatique permanente** :
-   - À chaque clic ou modification de score, les données sont immédiatement écrites sur le disque dur du PC dans `tournament_data.json` via le serveur.
-   - En parallèle, le navigateur garde une copie intégrale dans sa base interne **IndexedDB**.
-   - À chaque changement de session, un fichier d'archive horodaté est stocké dans le dossier `backups/` du PC (les 5 dernières sessions sont conservées).
+1. **Copies de secours automatiques** :
+   - Sur le réseau local, les changements envoyés par Socket.IO sont fusionnés par le serveur puis écrits en série dans `tournament_data.json`.
+   - Le navigateur garde aussi une copie locale dans **IndexedDB** et `localStorage`.
+   - Quand on passe à la session suivante, le serveur archive l'état de la session qui vient de finir dans `backups/`. Les cinq copies les plus récentes sont conservées.
 2. **Export / Import manuel** :
    - Dans **Configuration** → cliquer sur le bouton gris **« Exporter / Importer »**.
    - Cliquer sur **« Télécharger la sauvegarde (.json) »** pour enregistrer une copie sur une clé USB.
@@ -400,9 +400,9 @@ Voici l'analyse détaillée de chaque fichier du projet avec son rôle exact, se
 - **Détail des lignes clés** :
   - *Lignes 9 à 22* : Initialisation du serveur Express et de l'instance Socket.io avec une limite de mémoire tampon de 100 Mo (`maxHttpBufferSize: 1e8`) pour permettre l'échange d'images de sponsors en haute définition.
   - *Lignes 28 à 50* : Route `POST /api/upload` qui réceptionne les fichiers sons et logos et les enregistre dans le dossier `public/uploads/` avec un préfixe horodaté (`Date.now()`).
-  - *Lignes 54 à 65* : Route `POST /save` qui écrit l'intégralité de l'état du tournoi dans `tournament_data.json`.
+  - *Route `POST /save`* : Conservée pour compatibilité avec d'anciennes versions. La version actuelle enregistre l'état reçu par Socket.IO après fusion.
   - *Lignes 80 à 100 (`cleanupSnapshots`)* : Fonction qui inspecte le dossier `backups/`, trie les sauvegardes par date et supprime les plus anciennes pour ne conserver strictement que les 5 derniers snapshots.
-  - *Lignes 102 à 114 (`saveSnapshot`)* : Enregistre automatiquement une copie du tournoi à chaque session sous le nom `tournament_data_session_{sessionNum}.json`.
+  - *Fonction `saveSnapshot`* : Enregistre l'état précédent lors du passage à une session suivante, sous un nom horodaté. Le dossier garde les cinq copies les plus récentes.
   - *Lignes 120 à 146* : Lors de la connexion d'un nouvel appareil (`connection`), le serveur lui transmet immédiatement l'état actuel (`state_update`), les scores en direct en cours (`live_score_update`) et les terrains prêts (`court_ready_update`).
   - *Lignes 148 à 192 (`update_state`)* : **Algorithme de fusion intelligente**. Le serveur compare l'état reçu avec son état en mémoire. Si un match était déjà validé au statut `finished`, le serveur refuse de l'écraser par un statut `pending` (lignes 153 à 173). Cela protège les résultats contre toute désynchronisation entre plusieurs tablettes.
   - *Lignes 195 à 214* : Gestion des signaux `court_ready` et `court_ready_cancel` émis par les tablettes et rediffusés à l'organisateur.
@@ -410,7 +410,12 @@ Voici l'analyse détaillée de chaque fichier du projet avec son rôle exact, se
   - *Lignes 225 à 240* : Relais des ordres de chronomètre (`timer_start`), d'effets sonores (`play_audio`) et de musique (`music_command`).
   - *Lignes 247 à 264* : Démarrage du serveur web Vite en mode développement ou distribution des fichiers statiques compilés (`dist/index.html`) en production sur `0.0.0.0:3000`.
 
-#### 2. `types.ts` (Modèle de données TypeScript — 207 lignes)
+#### 2. `main.cjs` et `scripts/buildServer.mjs` (Démarrage du programme Windows)
+- **À quoi ils servent** : La commande `npm run build:windows` crée un serveur autonome dans `server-build/server.cjs`, puis fabrique le programme Windows portable. Au lancement du programme, `main.cjs` démarre ce serveur, attend sa réponse de contrôle, puis ouvre l'application à son adresse locale.
+- **Données du tournoi** : Les données et les fichiers téléversés sont rangés dans le dossier de données de l'application Windows, pas dans le dossier temporaire du programme.
+- **À retenir** : La version Cloudflare reste une prévisualisation web. Le serveur local est nécessaire pour faire communiquer les tablettes et l'écran TV pendant le tournoi.
+
+#### 3. `types.ts` (Modèle de données TypeScript — 207 lignes)
 - **À quoi il sert** : Ce fichier définit la structure stricte de toutes les données manipulées par le logiciel. Il empêche les erreurs de programmation en vérifiant le type de chaque variable.
 - **Structures essentielles** :
   - *Lignes 2 à 18 (`Player`, `Team`)* : Modèle d'un joueur (prénom, nom, sexe, rôles) et d'une équipe (nom, catégorie, poule, quota féminin).
@@ -421,7 +426,7 @@ Voici l'analyse détaillée de chaque fichier du projet avec son rôle exact, se
   - *Lignes 124 à 146 (`TournamentState`)* : L'objet global contenant l'état complet du tournoi.
   - *Lignes 148 à 207 (`TournamentAction`)* : L'inventaire de toutes les commandes reconnues par le logiciel (`SET_STATE`, `UPDATE_CONFIG`, `ADD_TEAM`, `UPDATE_MATCH_SCORE`, `NEXT_SESSION`, etc.).
 
-#### 3. `App.tsx` (Routeur principal et coquille de l'application — 239 lignes)
+#### 4. `App.tsx` (Routeur principal et coquille de l'application — 239 lignes)
 - **À quoi il sert** : C'est le composant React racine. Il lit les paramètres de l'adresse web pour décider d'afficher l'interface d'administration, l'écran TV ou l'écran d'une tablette terrain.
 - **Détail des lignes clés** :
   - *Lignes 39 à 57 (`useEffect`)* : Analyse l'URL du navigateur (`window.location.search`). Si `view=tv`, il bascule en mode plein écran TV (`isTvMode`). Si `view=court`, il bascule en mode tablette terrain (`isCourtMode`) pour le numéro de terrain indiqué.
@@ -429,7 +434,7 @@ Voici l'analyse détaillée de chaque fichier du projet avec son rôle exact, se
   - *Lignes 127 à 151* : Rendu du mode tablette avec vérification que l'option a bien été activée dans les réglages (`state.enableCourtView`).
   - *Lignes 153 à 236* : Rendu du mode Administrateur avec la barre supérieure, le menu latéral gauche et l'affichage dynamique de la vue sélectionnée via la fonction `renderView()` (lignes 68 à 91).
 
-#### 4. `wrangler.jsonc` (Configuration Cloudflare Workers — 9 lignes)
+#### 5. `wrangler.jsonc` (Configuration Cloudflare Workers — 9 lignes)
 - **À quoi il sert** : Permet de déployer instantanément la version web de l'application sur le réseau mondial de Cloudflare.
 - **Contenu** : Indique le nom du projet (`gestion-tournois-src`), la date de compatibilité, le dossier des fichiers compilés (`./dist`) et configure la redirection Single Page Application (`"not_found_handling": "single-page-application"`).
 
@@ -443,7 +448,7 @@ Voici l'analyse détaillée de chaque fichier du projet avec son rôle exact, se
   - *Lignes 29 à 40* : Initialisation de la connexion Socket.io vers l'adresse du serveur local avec un délai d'expiration rapide (`timeout: 1200`).
   - *Lignes 42 à 80 (`useEffect` de connexion)* : Si le serveur ne répond pas après 1200 millisecondes ou renvoie une erreur `connect_error`, la variable `isPreviewMode` passe à `true`. L'application charge alors les données depuis la base de données interne du navigateur (`IndexedDB` ou `localStorage`).
   - *Lignes 82 à 130* : Écouteurs d'événements Socket.io. Dès que le serveur envoie `state_update`, l'état React est mis à jour.
-  - *Lignes 132 à 155* : Sauvegarde automatique locale : à chaque modification de l'état, une copie est enregistrée dans `localStorage` (`tournament_preview_state`) et dans `IndexedDB` (`saveTournamentState`). Si le serveur est présent, l'action `update_state` lui est envoyée par WebSocket.
+  - *Lignes 132 à 155* : Le navigateur conserve une copie locale dans `localStorage` et `IndexedDB`. Sur le réseau local, il envoie `update_state` au serveur par WebSocket, et le serveur écrit l'état fusionné sur le disque.
 
 #### 2. `context/reducers/poolMatchReducer.ts` (Gestion des poules et scores — 145 lignes)
 - **À quoi il sert** : Il contient les fonctions qui créent les poules, génèrent les matchs et calculent les conséquences d'un score saisi.
@@ -482,11 +487,12 @@ Voici l'analyse détaillée de chaque fichier du projet avec son rôle exact, se
     3. Si égalité persistante : différence de points globale (`pointsDifference`).
     4. Si égalité persistante : total des points marqués (`pointsFor`).
 
-#### 5. `context/reducers/finalPhaseReducer.ts` (185 lignes)
+#### 5. `context/reducers/finalPhaseReducer.ts`
 - **À quoi il sert** : Gère la création des tableaux finaux et la progression des vainqueurs tour après tour.
 - **Fonctionnement** :
-  - *Lignes 15 à 45 (`GENERATE_FINAL_PHASE`)* : Construit l'arbre éliminatoire complet (quarts, demis, finale, 3ème place).
-  - *Lignes 47 à 95 (`UPDATE_FINAL_MATCH_SCORE`)* : Valide le score d'un match de tableau, désigne le gagnant, et appelle `updateBracketProgression()` pour inscrire automatiquement le nom du vainqueur dans le match du tour suivant.
+  - `GENERATE_FINAL_PHASE` : Le mode automatique choisit les équipes qualifiées. Le mode manuel garde les choix de l'organisateur.
+  - `UPDATE_MANUAL_PAIRINGS` : Après les affiches manuelles du premier tour, prépare aussi les tours suivants sans choisir les équipes à la place de l'organisateur.
+  - `UPDATE_FINAL_MATCH_SCORE` : Valide un score, désigne le gagnant et transmet le résultat au match lié du tour suivant.
 
 ---
 
@@ -530,8 +536,8 @@ Voici l'analyse détaillée de chaque fichier du projet avec son rôle exact, se
 ### 1. Où sont stockées les données ?
 L'application utilise un système de stockage à quatre niveaux :
 1. **La mémoire vive (RAM de React)** : Tant que l'application est ouverte, les données sont immédiatement disponibles dans le contexte `state`.
-2. **Le disque dur du PC central** : Dès qu'une modification a lieu, une requête `POST /save` écrit le fichier `tournament_data.json` sur le PC de l'organisateur.
-3. **Le dossier des sauvegardes automatiques (`backups/`)** : À chaque changement de session, une copie complète du tournoi est archivée sous le nom `tournament_data_session_X.json`.
+2. **Le disque dur du PC central** : Sur le réseau local, le serveur écrit dans `tournament_data.json` l'état reçu et fusionné après chaque changement envoyé par WebSocket.
+3. **Le dossier des sauvegardes automatiques (`backups/`)** : Au passage à une session suivante, l'état juste avant le changement est archivé dans un fichier horodaté. Les cinq copies les plus récentes sont gardées.
 4. **La mémoire interne du navigateur (`IndexedDB` et `localStorage`)** : Le navigateur conserve une copie miroir de secours. Si le serveur Node.js est coupé ou redémarré, le navigateur est capable de réinjecter instantanément les données.
 
 ### 2. Le cheminement d'une action utilisateur (Exemple : validation d'un panier sur une tablette)
@@ -582,8 +588,13 @@ Cette section recense les différences identifiées entre les textes d'aide de l
 1. **La règle officielle des points en poule** : Le code applique rigoureusement 3 points pour une victoire, 2 points pour un match nul, 1 point pour une défaite et 0 point pour un forfait (confirmé dans `standingsLogic.ts`).
 2. **Le conteneur TV fixe 1920×1080** : La mise à l'échelle automatique par `transform: scale` est bien active et garantit un affichage sans débordement (confirmé dans `TVDisplay.tsx`).
 3. **La protection contre l'écrasement des scores** : Le serveur fusionne les matchs et refuse d'écraser un match terminé par un statut non terminé (confirmé dans `server.ts`).
-4. **La double persistance automatique** : L'écriture conjointe sur disque `tournament_data.json` et dans `IndexedDB` est active à chaque action (confirmé dans `TournamentContext.tsx`).
+4. **Les copies de secours** : Les changements sur le réseau local sont envoyés au serveur par WebSocket, puis enregistrés sur le disque. Le navigateur conserve en parallèle une copie locale dans `IndexedDB` (confirmé dans `TournamentContext.tsx` et `server.ts`).
 5. **Le bonus féminin 3x3** : Les règles (+1 pt pour 1 femme, +2 pts pour 2 femmes ou plus) sont bien programmées et affichées en rappel visuel orange (confirmé dans `TeamManager.tsx` et `CourtView.tsx`).
+6. **Sauvegarde de fin de session** : Le serveur garde l'état d'avant le changement de session dans une copie horodatée. Une file d'écriture évite que deux sauvegardes rapides se remplacent.
+7. **Phases finales** : Le tableau crée la finale et la petite finale à partir des deux demi-finales. Le mode manuel prépare les tours à remplir et garde les choix séparés par catégorie.
+8. **Démarrage Windows** : Le paquet contient un serveur de production séparé de l'écran. Le programme empaqueté le démarre et attend sa réponse avant d'afficher l'application.
+
+Ces trois points ont des tests automatiques. La compilation et l'essai du serveur empaqueté ont également été vérifiés sur la version de travail.
 
 ### B. Écarts entre le guide d'aide (`HelpGuide.tsx`) et le code réel
 1. **Timing des alertes sonores du chronomètre** :
@@ -607,6 +618,8 @@ Cette section recense les différences identifiées entre les textes d'aide de l
 Tous les fichiers de code du projet ont été inspectés intégralement pour la rédaction de ce guide :
 - `App.tsx`
 - `server.ts`
+- `main.cjs`
+- `scripts/buildServer.mjs`
 - `types.ts`
 - `wrangler.jsonc`
 - `context/TournamentContext.tsx`
@@ -625,6 +638,7 @@ Tous les fichiers de code du projet ont été inspectés intégralement pour la 
 - `utils/poolLogic.ts`
 - `utils/scheduleLogic.ts`
 - `utils/standingsLogic.ts`
+- `utils/sessionSnapshot.ts`
 - `hooks/useAutoFit.ts`
 - `components/AlertDialog.tsx`
 - `components/CategoryDialog.tsx`
@@ -648,6 +662,9 @@ Tous les fichiers de code du projet ont été inspectés intégralement pour la 
 - `components/StandingsDisplay.tsx`
 - `components/TVBracket.tsx`
 - `components/TVDisplay.tsx`
+- `tests/finalPhaseLogic.test.mjs`
+- `tests/serverSession.integration.test.mjs`
+- `tests/sessionSnapshot.test.mjs`
 - `components/TVStandings.tsx`
 - `components/TVTimer.tsx`
 - `components/TeamManager.tsx`
