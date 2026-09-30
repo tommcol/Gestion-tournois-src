@@ -25,6 +25,220 @@
   }
 }
 
+/* Vestiaire: visual-only theme for the organizer screen. It keeps the existing
+   layout and controls in place; the TV and court screens remain untouched. */
+.app-vestiaire {
+  color: #e8eef8;
+  background: #0d1728 !important;
+}
+
+.app-vestiaire > header {
+  background: linear-gradient(115deg, #15243b 0%, #1a2d49 100%) !important;
+  border-bottom: 1px solid #2c3d58;
+  box-shadow: 0 8px 24px rgb(4 11 24 / 28%);
+}
+
+.app-vestiaire > header .text-xl {
+  color: #f4f7fc;
+  letter-spacing: -0.02em;
+}
+
+.app-vestiaire aside {
+  background: #121f34 !important;
+  border-right: 1px solid #263750;
+}
+
+.app-vestiaire aside nav button {
+  border-radius: 12px;
+}
+
+.app-vestiaire aside nav button.bg-blue-600 {
+  color: #17243a !important;
+  background: linear-gradient(135deg, #ffb45f, #f0953a) !important;
+  box-shadow: 0 5px 14px rgb(240 149 58 / 20%);
+}
+
+.app-vestiaire > div.flex-1,
+.app-vestiaire main.flex-1 {
+  background: linear-gradient(145deg, #101b2e 0%, #111e33 62%, #14223a 100%);
+}
+
+.app-vestiaire [class~="bg-white"],
+.app-vestiaire [class~="bg-gray-50"],
+.app-vestiaire [class~="bg-gray-100"],
+.app-vestiaire [class~="dark:bg-gray-800"],
+.app-vestiaire [class~="dark:bg-gray-700"] {
+  color: #e8eef8 !important;
+  background-color: #192840 !important;
+}
+
+.app-vestiaire [class~="bg-gray-200"],
+.app-vestiaire [class~="dark:bg-gray-600"] {
+  color: #e8eef8 !important;
+  background-color: #263750 !important;
+}
+
+.app-vestiaire [class~="bg-gray-700"] {
+  background-color: #263750 !important;
+}
+
+.app-vestiaire [class~="bg-gray-800"] {
+  background-color: #14223a !important;
+}
+
+.app-vestiaire [class~="bg-gray-900"] {
+  background-color: #101a2b !important;
+}
+
+.app-vestiaire [class~="bg-blue-50"],
+.app-vestiaire [class~="dark:bg-blue-900/20"],
+.app-vestiaire [class~="dark:bg-blue-900/30"] {
+  background-color: #1a304c !important;
+}
+
+.app-vestiaire [class~="bg-green-50"],
+.app-vestiaire [class~="dark:bg-green-900/20"],
+.app-vestiaire [class~="dark:bg-green-900/30"] {
+  background-color: #1d382e !important;
+}
+
+.app-vestiaire [class~="bg-red-50"],
+.app-vestiaire [class~="dark:bg-red-900/20"],
+.app-vestiaire [class~="dark:bg-red-900/30"] {
+  background-color: #3b2632 !important;
+}
+
+.app-vestiaire [class~="bg-amber-50"],
+.app-vestiaire [class~="dark:bg-amber-900/20"] {
+  background-color: #3a3023 !important;
+}
+
+.app-vestiaire [class~="text-gray-900"],
+.app-vestiaire [class~="text-gray-800"],
+.app-vestiaire [class~="text-gray-700"],
+.app-vestiaire [class~="dark:text-gray-100"],
+.app-vestiaire [class~="dark:text-gray-200"] {
+  color: #e8eef8 !important;
+}
+
+.app-vestiaire [class~="text-gray-600"],
+.app-vestiaire [class~="text-gray-500"],
+.app-vestiaire [class~="text-gray-400"],
+.app-vestiaire [class~="dark:text-gray-400"],
+.app-vestiaire [class~="dark:text-gray-300"] {
+  color: #aebbd0 !important;
+}
+
+.app-vestiaire [class~="text-blue-700"],
+.app-vestiaire [class~="text-blue-800"],
+.app-vestiaire [class~="text-blue-900"],
+.app-vestiaire [class~="dark:text-blue-300"] {
+  color: #b8d4ff !important;
+}
+
+.app-vestiaire [class~="text-green-700"],
+.app-vestiaire [class~="text-green-800"],
+.app-vestiaire [class~="text-green-900"],
+.app-vestiaire [class~="dark:text-green-300"] {
+  color: #a9e6bb !important;
+}
+
+.app-vestiaire [class~="text-red-700"],
+.app-vestiaire [class~="text-red-800"],
+.app-vestiaire [class~="text-red-900"],
+.app-vestiaire [class~="dark:text-red-300"] {
+  color: #ffb7bd !important;
+}
+
+.app-vestiaire [class~="text-amber-700"],
+.app-vestiaire [class~="text-amber-800"],
+.app-vestiaire [class~="dark:text-amber-300"] {
+  color: #ffd493 !important;
+}
+
+.app-vestiaire [class~="border-gray-100"],
+.app-vestiaire [class~="border-gray-200"],
+.app-vestiaire [class~="border-gray-300"],
+.app-vestiaire [class~="dark:border-gray-600"],
+.app-vestiaire [class~="dark:border-gray-700"] {
+  border-color: #30415d !important;
+}
+
+.app-vestiaire button {
+  border-radius: 12px;
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.app-vestiaire button.bg-blue-600,
+.app-vestiaire button.bg-blue-500 {
+  color: #17243a !important;
+  background: linear-gradient(135deg, #ffb45f, #f0953a) !important;
+  box-shadow: 0 5px 14px rgb(240 149 58 / 18%);
+}
+
+.app-vestiaire button.bg-green-600,
+.app-vestiaire button.bg-green-500 {
+  background: #31865a !important;
+  box-shadow: 0 4px 12px rgb(49 134 90 / 18%);
+}
+
+.app-vestiaire button.bg-red-600,
+.app-vestiaire button.bg-red-500 {
+  background: #ad4651 !important;
+  box-shadow: 0 4px 12px rgb(173 70 81 / 18%);
+}
+
+.app-vestiaire button.bg-purple-600,
+.app-vestiaire button.bg-purple-500 {
+  background: #566fa0 !important;
+  box-shadow: 0 4px 12px rgb(86 111 160 / 18%);
+}
+
+.app-vestiaire button.bg-gray-500,
+.app-vestiaire button.bg-gray-600,
+.app-vestiaire button.bg-gray-700 {
+  color: #edf3fb !important;
+  background: #293a55 !important;
+}
+
+.app-vestiaire button:not(:disabled):hover {
+  filter: brightness(1.08);
+}
+
+.app-vestiaire button:disabled {
+  cursor: not-allowed;
+  filter: saturate(.55);
+}
+
+.app-vestiaire input:not([type="checkbox"]):not([type="radio"]),
+.app-vestiaire select,
+.app-vestiaire textarea {
+  color: #edf3fb;
+  background-color: #111e33;
+  border-color: #344661;
+  border-radius: 10px;
+}
+
+.app-vestiaire input::placeholder,
+.app-vestiaire textarea::placeholder {
+  color: #91a0b8;
+}
+
+.app-vestiaire [class~="shadow-lg"],
+.app-vestiaire [class~="shadow-xl"],
+.app-vestiaire [class~="shadow-2xl"] {
+  box-shadow: 0 14px 34px rgb(3 9 20 / 30%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-vestiaire button {
+    transition: none;
+  }
+  .app-vestiaire button:not(:disabled):hover {
+    filter: none;
+  }
+}
+
 /* Custom styles for printing roadmaps */
 @media print {
   .print-no-break {

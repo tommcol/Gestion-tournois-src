@@ -151,7 +151,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-900 font-sans">
+    <div className="app-vestiaire flex flex-col h-screen bg-gray-100 dark:bg-gray-900 font-sans">
       {isPreviewMode && (
         <div className="bg-amber-500/95 text-amber-950 font-bold px-4 py-1.5 text-xs sm:text-sm flex items-center justify-center gap-2 text-center shrink-0 z-30 shadow-md border-b border-amber-600/30">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">

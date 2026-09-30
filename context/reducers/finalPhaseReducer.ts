@@ -1,6 +1,6 @@
 
 import { TournamentState, TournamentAction, FinalMatch } from '../../types';
-import { generateAutoPairings, createEmptyPairings, updateWinnerInFinals } from '../../utils/finalPhaseLogic';
+import { generateAutoPairings, createEmptyPairings, generateBracket, updateWinnerInFinals } from '../../utils/finalPhaseLogic';
 
 export const finalPhaseReducer = (state: TournamentState, action: TournamentAction): TournamentState => {
   switch (action.type) {
@@ -35,11 +35,12 @@ export const finalPhaseReducer = (state: TournamentState, action: TournamentActi
     }
     case 'UPDATE_MANUAL_PAIRINGS': {
       const { categoryId, matches } = action.payload;
+      const completeBracket = generateBracket(matches, categoryId);
       return { 
         ...state,
         finalMatches: {
           ...state.finalMatches,
-          [categoryId]: matches
+          [categoryId]: completeBracket
         }
       };
     }

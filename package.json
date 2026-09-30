@@ -8,8 +8,11 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "tsc && vite build",
+    "build:server": "node scripts/buildServer.mjs",
+    "build:windows": "npm run build && npm run build:server && electron-builder --win portable",
     "start": "node server.ts",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.mjs"
   },
   "keywords": [],
   "author": "Thomas",
@@ -47,6 +50,7 @@
     "productName": "Tournament Manager Pro",
     "files": [
       "dist/**/*",
+      "server-build/**/*",
       "main.cjs",
       "package.json",
       "assets/**/*"
@@ -61,6 +65,10 @@
       "artifactName": "${productName}_${version}.${ext}",
       "forceCodeSigning": false,
       "requestedExecutionLevel": "asInvoker"
-    }
+    },
+    "asarUnpack": [
+      "dist/**/*",
+      "server-build/**/*"
+    ]
   }
 }

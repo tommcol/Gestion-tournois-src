@@ -43,24 +43,6 @@ const loadLocalOrInitialData = async (): Promise<TournamentState> => {
     return initialData;
 };
 
-const saveTournamentState = async (newState: TournamentState) => {
-    try {
-        const response = await fetch('/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newState)
-        });
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-            console.warn('⚠️ Impossible de sauvegarder les données sur le serveur.');
-        }
-    } catch (error) {
-        console.warn('Save error (serveur non joignable):', error);
-    }
-};
-
 const initialState: TournamentState = initialData;
 
 const tournamentReducer = (state: TournamentState, action: TournamentAction): TournamentState => {
@@ -225,7 +207,6 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
     } else {
       // Réseau local : quand le serveur du PC est joignable, conserve le fonctionnement actuel
       socketRef.current.emit('update_state', state);
-      saveTournamentState(state);
       
       saveToIndexedDB(state).catch(err => {
         console.warn('IndexedDB save failed:', err);
