@@ -247,6 +247,13 @@ const TeamManager: React.FC = () => {
         }
         setEditingTeam(null);
     }
+
+    const handlePresenceChange = (team: Team, isPresent: boolean) => {
+        dispatch({
+            type: 'UPDATE_TEAM',
+            payload: { ...team, isPresent }
+        });
+    }
     
     const handleDelete = (teamId: string) => {
         if(window.confirm('Êtes-vous sûr de vouloir supprimer cette équipe ?')) {
@@ -420,6 +427,16 @@ const TeamManager: React.FC = () => {
                                         <p className="text-sm text-gray-500 dark:text-gray-400">
                                             {team.players.map(p => `${p.firstName} ${p.lastName}`).join(', ')}
                                         </p>
+                                        <label className="mt-2 inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={team.isPresent ?? false}
+                                                onChange={e => handlePresenceChange(team, e.target.checked)}
+                                                aria-label={`Présence confirmée pour ${team.name}`}
+                                                className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                                            />
+                                            <span>{team.isPresent ? 'Présente' : 'Présence à confirmer'}</span>
+                                        </label>
                                     </div>
                                     <div className="flex-shrink-0 flex items-center space-x-2">
                                         <button onClick={() => setViewingRoadmapId(team.id)} className="bg-indigo-500 text-white py-1 px-3 rounded hover:bg-indigo-600 text-sm">Roadmap</button>
