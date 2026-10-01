@@ -15,6 +15,7 @@ export interface Team {
   poolId?: string;
   isMix: boolean;
   womenCount?: number;
+  isPresent?: boolean;
 }
 
 export interface Category {
