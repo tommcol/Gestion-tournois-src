@@ -122,6 +122,8 @@
 .appearance-organizer aside nav button { color: var(--ui-nav-text) !important; }
 .appearance-organizer aside nav button[class~="bg-blue-600"] { color: var(--ui-accent-text) !important; }
 .appearance-organizer aside nav button:not([class~="bg-blue-600"]):hover { background: var(--ui-header) !important; }
+.appearance-organizer > header button[class~="bg-gray-500"],
+.appearance-organizer > header button[class~="bg-gray-600"],
 .appearance-organizer > header button[class~="bg-gray-700"] { background: var(--ui-header) !important; color: var(--ui-nav-text) !important; }
 .appearance-organizer button:not(:disabled):hover { filter: brightness(1.06); }
 .appearance-organizer button:disabled { opacity: .55; cursor: not-allowed; }
