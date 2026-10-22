@@ -1,3 +1,10 @@
+## Ajustements des sélecteurs et impressions — version 2.3.1 du 22 octobre 2026
+
+- Poules : « Équipes par poule » utilise désormais la même liste de choix et le même style que « Matchs par équipe » en Suisse. Les choix vont de 2 au nombre d’équipes de la catégorie (avec conservation de la valeur courante et du choix initial 4).
+- Feuilles de route : les catégories se choisissent par boutons avec pastille de couleur comme dans Organisation/Poules, plus par menu déroulant. Les cases de sélection individuelle des équipes à réimprimer restent disponibles.
+- Feuilles de match : 4 matchs maximum par page A4 paysage, sans option 6 matchs. Le générateur plafonne aussi à 4 pour les anciens appels. Cette consigne remplace les indications 4/6 ou « jusqu’à 6 » des sections historiques ci-dessous.
+- Les feuilles validées, les règles sportives et les commandes générales restent inchangées.
+
 # 📖 GUIDE COMPLET DE L'APPLICATION — GESTION TOURNOIS SRC (TOURNAMENT MANAGER PRO)
 
 > **Ce guide est le document de référence absolu pour comprendre, utiliser, maintenir ou faire évoluer l'application.**  

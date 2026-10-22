@@ -18,7 +18,6 @@ const TeamRoadmaps: React.FC = () => {
   const [selections, setSelections] = useState<Record<string, string[] | undefined>>({});
   const [mode, setMode] = useState<'session' | 'terrain'>('session');
   const [session, setSession] = useState(1), [court, setCourt] = useState(1);
-  const [perPage, setPerPage] = useState<4 | 6>(6);
   const [paper, setPaper] = useState<PaperDocument | null>(null);
   const [message, setMessage] = useState('');
   const categoryTeams = useMemo(() => teams.filter(team => team.categoryId === categoryId), [teams, categoryId]);
@@ -31,11 +30,11 @@ const TeamRoadmaps: React.FC = () => {
   useEffect(() => { if (!sessions.includes(session)) setSession(sessions[0] || 1); }, [sessions, session]);
   useEffect(() => { if (!courts.includes(court)) setCourt(courts[0] || 1); }, [courts, court]);
   // Les scores seuls ne remplacent pas matches : aucune préparation cachée à chaque résultat.
-  useEffect(() => { setPaper(null); setMessage(''); }, [categories, teams, pools, matches, section, categoryId, selections, mode, session, court, perPage]);
+  useEffect(() => { setPaper(null); setMessage(''); }, [categories, teams, pools, matches, section, categoryId, selections, mode, session, court]);
   const data = { categories, teams, pools, matches };
   const prepare = (kind: 'routes' | 'matches' | 'calendar' = section) => {
     try {
-      const result = kind === 'routes' ? createRouteDocument(data, categoryId, selectedIds, textMeasure()) : kind === 'matches' ? createMatchDocument(data, mode, mode === 'session' ? session : court, perPage, textMeasure()) : createCalendarDocument(readState(), categoryId);
+      const result = kind === 'routes' ? createRouteDocument(data, categoryId, selectedIds, textMeasure()) : kind === 'matches' ? createMatchDocument(data, mode, mode === 'session' ? session : court, 4, textMeasure()) : createCalendarDocument(readState(), categoryId);
       setPaper(result); setMessage(result.pages.length ? '' : 'Aucune feuille à préparer avec ces choix.');
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Impossible de préparer les feuilles.'); }
   };
@@ -64,7 +63,7 @@ const TeamRoadmaps: React.FC = () => {
     {section === 'routes' ? <>
       <section className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm space-y-3">
         <h2 className="text-lg font-bold">1. Choisir la catégorie</h2>
-        <label className="flex items-center gap-3">Catégorie<select aria-label="Catégorie des feuilles de route" value={categoryId} onChange={event => setCategoryId(event.target.value)} className="border rounded-lg p-2 dark:bg-gray-700">{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <div role="tablist" aria-label="Catégorie des feuilles de route" className="flex items-center gap-2 flex-wrap">{categories.map(item => <button key={item.id} role="tab" aria-selected={categoryId === item.id} onClick={() => setCategoryId(item.id)} className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors ${categoryId === item.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}><span style={{ backgroundColor: item.color }} className="w-3 h-3 rounded-full flex-shrink-0"></span><span>{item.name}</span></button>)}</div>
         <p className="text-sm text-gray-500 dark:text-gray-400">Plusieurs équipes par feuille A4 paysage. {category?.isRefereeMandatory ? 'Colonne Arbitrage incluse. ' : ''}{category?.isScorerMandatory ? 'Colonne Marque incluse.' : ''}{!category?.isRefereeMandatory && !category?.isScorerMandatory ? 'Uniquement les matchs et leurs terrains.' : ''}</p>
       </section>
       <section className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm space-y-3">
@@ -84,9 +83,8 @@ const TeamRoadmaps: React.FC = () => {
       <div className="flex flex-wrap items-center gap-3">
         <label>Imprimer <select aria-label="Regrouper les feuilles de match" value={mode} onChange={event => setMode(event.target.value as 'session' | 'terrain')} className="border rounded-lg p-2 dark:bg-gray-700"><option value="session">Par session</option><option value="terrain">Par terrain</option></select></label>
         {mode === 'session' ? <label>Session <select aria-label="Session des feuilles de match" value={session} onChange={event => setSession(Number(event.target.value))} className="border rounded-lg p-2 dark:bg-gray-700">{sessions.map(n => <option key={n} value={n}>Session {n}</option>)}</select></label> : <label>Terrain <select aria-label="Terrain des feuilles de match" value={court} onChange={event => setCourt(Number(event.target.value))} className="border rounded-lg p-2 dark:bg-gray-700">{courts.map(n => <option key={n} value={n}>Terrain {n}</option>)}</select></label>}
-        <label>Mise en page <select aria-label="Matchs par feuille" value={perPage} onChange={event => setPerPage(Number(event.target.value) as 4 | 6)} className="border rounded-lg p-2 dark:bg-gray-700"><option value={6}>Jusqu’à 6 matchs par feuille — économique</option><option value={4}>4 matchs par feuille — plus grand</option></select></label>
       </div>
-      <p className="text-sm">Les cases déjà cochées portent une croix noire, visible sans impression des fonds colorés.</p>
+      <p className="text-sm">4 matchs maximum par feuille A4 paysage. Les cases déjà cochées portent une croix noire, visible sans impression des fonds colorés.</p>
       <button disabled={!matches.length} onClick={() => prepare('matches')} className={`${button} bg-blue-600 text-white`}>Préparer l’aperçu des feuilles de match</button>
     </section>}
     {message && <p role="status" className="p-3 rounded-lg border bg-white dark:bg-gray-800">{message}</p>}

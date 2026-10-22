@@ -229,7 +229,7 @@ const App: React.FC = () => {
             </NavItem>
           </nav>
           <div className="text-xs text-gray-500 mt-auto pt-4 border-t border-gray-700">
-            Version 2.3.0
+            Version 2.3.1
           </div>
         </aside>
         <main className="flex-1 p-4 md:p-8 overflow-y-auto">

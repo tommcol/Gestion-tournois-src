@@ -82,9 +82,9 @@ test('cases déjà cochées : vraies croix SVG noires et points de départ visib
   assert.match(JSON.stringify(view.toJSON()), /Départ/); act(() => view.unmount());
 });
 
-test('feuilles de match : toutes catégories par session/terrain et pagination 4 ou 6', () => {
+test('feuilles de match : toutes catégories par session/terrain et maximum 4 matchs par page, même pour un ancien appel à 6', () => {
   const data = fixture(); data.categories.push({ ...data.categories[0], id: 'other', name: 'Autre' }); data.teams[0].categoryId = 'other';
-  const session = createMatchDocument(data, 'session', 1, 6); assert.equal(session.pages.length, 1); assert.equal(session.itemCount, 6); assert.equal(everyCard(session)[0].category, 'Autre');
+  const session = createMatchDocument(data, 'session', 1, 6); assert.equal(session.pages.length, 2); assert.ok(session.pages.every(page => page.cards.length <= 4)); assert.equal(session.itemCount, 6); assert.equal(everyCard(session)[0].category, 'Autre');
   assert.equal(createMatchDocument(data, 'session', 1, 4).pages.length, 2);
   const court = createMatchDocument(data, 'terrain', 2, 6); assert.deepEqual(everyCard(court).map(card => card.session), [1, 2, 3, 4]);
   assert.equal(createMatchDocument(data, 'session', 999, 6).pages.length, 0);

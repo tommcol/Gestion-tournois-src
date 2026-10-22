@@ -120,7 +120,7 @@ export function createMatchDocument(data: PaperData, mode: 'session' | 'terrain'
     return { kind: 'match', id: match.id, category: category?.name || 'Catégorie à préciser', pool: category ? poolLabel(match, data.pools, category) : '', session: match.sessionNumber, court: match.court, team1: team1?.name || 'Équipe à préciser', team2: team2?.name || 'Équipe à préciser', bonus1: getStartingBonus(team1), bonus2: getStartingBonus(team2) };
   });
   const pages: PaperPage[] = [];
-  const capacity = perPage === 6 && cards.some(card => [card.team1, card.team2].some(name => wrappedLines(name, 190, text => measure(text) * 1.2) > 2) || wrappedLines(card.category, 140, text => measure(text) * .9) > 2) ? 4 : perPage;
+  const capacity = Math.min(4, perPage);
   for (let i = 0; i < cards.length; i += capacity) pages.push({ cards: cards.slice(i, i + capacity), columns: 2 });
   return { title: `Feuilles de match — ${mode === 'session' ? 'Session' : 'Terrain'} ${selected}`, pages, preparedAt: Date.now(), kind: 'matches', itemCount: cards.length };
 }

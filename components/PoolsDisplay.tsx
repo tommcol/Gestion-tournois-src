@@ -324,14 +324,16 @@ const PoolsDisplay: React.FC = () => {
                                         <label htmlFor="teams-per-pool-input" className="text-sm font-medium text-gray-600 dark:text-gray-300">
                                             Équipes par poule:
                                         </label>
-                                        <input
+                                        <select
                                             id="teams-per-pool-input"
-                                            type="number"
-                                            min="2"
                                             value={teamsPerPool}
                                             onChange={(e) => setTeamsPerPool(parseInt(e.target.value, 10) || 2)}
-                                            className="w-16 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 px-2 text-center"
-                                        />
+                                            className="bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm py-1 px-2"
+                                        >
+                                            {Array.from({ length: Math.max(4, categoryTeamsCount, teamsPerPool) - 1 }, (_, index) => index + 2).map(n => (
+                                                <option key={n} value={n}>{n} équipes</option>
+                                            ))}
+                                        </select>
                                     </div>
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input
@@ -474,3 +476,4 @@ const PoolsDisplay: React.FC = () => {
 };
 
 export default PoolsDisplay;
+
