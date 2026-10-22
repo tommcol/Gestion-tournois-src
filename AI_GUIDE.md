@@ -56,6 +56,7 @@ Les vues tablette et TV n’envoient plus l’ensemble du tournoi avec `update_s
 - `utils/courtResults.ts` : réception des résultats, refus des égalités et mise en attente des conflits.
 - `components/TVMomentSettings.tsx` : cases TV selon les moments et accès rapide.
 - `components/OrganizerNotifications.tsx` : prolongations et choix entre deux scores différents.
+- `scripts/runTests.mjs` : lance la même liste de tests sous Windows et Linux sans dépendre du développement de `*.test.mjs` par le terminal. `npm test` utilise ce lanceur.
 - `tests/tournamentFlow.test.mjs` : scénarios de journée et protection des résultats.
 - `tests/courtNetwork.test.mjs` : échanges réels avec le serveur, reconnexion, accusés conservés après redémarrage, conflits, prolongation et horloge.
 
