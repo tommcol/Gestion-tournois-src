@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useTournament } from '../context/TournamentContext';
+import { useTournamentControls } from '../context/TournamentContext';
 import { Match, FinalMatch } from '../types';
 
 interface ScoreDialogProps {
@@ -23,7 +23,7 @@ const ScoreDialog: React.FC<ScoreDialogProps> = ({
   team1WomenCount,
   team2WomenCount
 }) => {
-  const { dispatch } = useTournament();
+  const { dispatch } = useTournamentControls();
   const [score1, setScore1] = useState<number | ''>(match.score1 ?? '');
   // FIX: Corrected a typo from `==` to `??` for correct state initialization. This prevents a score of 0 from being treated as an empty string.
   const [score2, setScore2] = useState<number | ''>(match.score2 ?? '');

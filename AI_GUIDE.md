@@ -7,6 +7,38 @@
 ---
 
 
+## Scores en direct et mises à jour ciblées — version 2.2.1 du 22 octobre 2026
+
+### Décision de l’organisateur
+**Pendant un match, les points ajoutés sur une tablette changent seulement le score en direct du bandeau TV. Ils ne valident pas le match, ne changent pas les résultats officiels, ne recalculent pas les classements et ne font pas avancer les phases finales.** L’envoi du score final au PC reste distinct. Après validation par le PC, le résultat officiel et le classement de la poule concernée sont mis à jour ; les finales gardent leurs règles de progression existantes. Un résultat papier peut toujours être saisi pendant la session suivante. Il ne faut donc pas geler tous les classements pendant toute une session : un autre match officiellement validé peut mettre à jour sa propre poule pendant qu’un match est encore en direct.
+
+Conserver les emplacements, tailles et styles des boutons, le chrono, le défilement TV, les choix par moment du tournoi et les formulaires existants. Les modifications concernent les abonnements aux données et le découpage interne de l’affichage, pas les règles sportives ou la présentation.
+
+### Affichage plus léger
+- `context/TournamentStore.tsx` conserve l’état officiel dans un magasin partagé. `useTournamentSelector` s’abonne à une portion précise ; `useTournamentFields` choisit plusieurs champs avec comparaison de leurs références. Quand ces données restent identiques, le composant ne se redessine pas. La sélection reste correcte lorsqu’une catégorie ou une page change sans nouvelle réception réseau.
+- `TournamentContext.tsx` garde les commandes et la connexion dans un contexte stable. `useTournamentControls()` permet de les utiliser sans recevoir tous les scores. `useTournament()` reste compatible avec les anciens écrans qui lisent encore l’ensemble de l’état ; **ne pas prétendre que chaque composant du logiciel a été réécrit**. Pour les nouvelles évolutions, préférer une sélection précise aux abonnements complets.
+- Le cadre `App`, le lecteur musical, les commandes du chrono, la configuration et la liste des équipes ne s’abonnent plus aux scores qui ne les concernent pas. Le dialogue de score n’écoute que les commandes : une réception réseau ailleurs ne réinitialise pas la saisie en cours.
+- `components/ScheduleMatchRow.tsx` contient la ligne existante du calendrier, avec les mêmes cases et boutons. La ligne et ses fonctions sont stables ; valider un match ne redessine pas ses voisins. Les scores rapides restent conservés pour les autres lignes.
+- Chaque `PoolStandingCard` de `StandingsDisplay` écoute seulement le classement de sa poule. Le cadre des catégories ne dépend plus de tous les classements. `TVStandings` écoute les tailles de poules pour sa pagination et les seuls classements de la page visible. Les tables `TVStandingTable` inchangées sont mémorisées ; un score hors écran sera visible quand sa page sera affichée.
+- Les listes triées des matchs et résultats TV conservent leur référence lorsqu’aucun de leurs matchs n’a changé. Les secondes du chrono ne fabriquent plus inutilement une nouvelle liste pour ces blocs.
+
+### Deux chemins séparés à préserver
+1. **Direct** : `CourtView` envoie `live_score`. `server.ts` utilise `readLiveScore` (`utils/liveScores.ts`) pour ne relayer que terrain, identités et points destinés à l’affichage. Un champ parasite comme `status: finished` ou un faux `standings` n’est pas transmis. Ce chemin ne déclenche aucun traitement de résultat, aucun changement de version officielle et aucune sauvegarde du tournoi.
+2. **Résultat officiel** : `court_submit`, ou une saisie validée par l’organisateur, conserve le traitement existant : contrôle du score, règles de finale, gestion des conflits, sauvegarde et accusé de réception. **Ne jamais transformer chaque point live en `UPDATE_MATCH_SCORE`/`UPDATE_FINAL_MATCH_SCORE`.** Le score final envoyé peut différer du dernier score live reçu ; seul le résultat accepté fait foi.
+
+`services/liveScoresChannel.ts` garde les scores provisoires à part, sans les ajouter à `TournamentState`. Le fournisseur de connexion les reçoit même si le bandeau n’est pas encore monté. `components/LiveScoreTicker.tsx` écoute seul ce canal et reproduit les mêmes éléments du bandeau (pause, deux copies du ruban, message d’attente). Le reste de `TVDisplay` ne possède plus d’état local `liveScores` et ne se redessine donc plus à chaque point. Les messages identiques ou invalides sont ignorés ; les cartes des autres terrains restent stables. Le canal se vide lors d’une connexion, d’un reset des terrains ou du signal officiel de fin du chrono ; la copie initiale fournie par le serveur reste reçue avant le montage.
+
+`utils/socketSubscriptions.ts` retire uniquement les écouteurs de la vue quittée. Le calendrier et le gestionnaire des finales l’utilisent : ne pas remettre `socket.off('courts_reset')` sans fonction précise, qui débrancherait aussi le canal live.
+
+### Vérifications de cette version
+`npm run build`, `npm run build:server`, `npm test` : **39 tests**, dont six nouveaux essais de rendu avec React (`tests/targetedRendering.test.mjs`, dépendance de développement `react-test-renderer`). Ils vérifient une saisie conservée, un cadre/lecteur témoin non redessinés, une seule carte de poule modifiée, des tables TV inchangées/hors écran, les lignes voisines du calendrier, 100 changements live sans changement officiel, l’arrivée du direct avant montage, la pause et la désinscription d’une vue.
+
+Le test réseau réel `tests/incrementalNetwork.test.mjs` envoie aussi 100 scores live avec plusieurs clients : pas de nouveau message officiel ni changement du fichier sauvegardé ; une TV qui rejoint retrouve le direct mais garde le match non validé. L’envoi final est ensuite enregistré avec les autres scénarios de réception, conflit et reconnexion. Les tests React vérifient les rendus et la valeur saisie, pas un essai physique au gymnase ni la position du curseur sur un vrai PC. Tester le nouveau fichier Windows sur le matériel du tournoi reste nécessaire pour juger le confort réel.
+
+GitHub déclenche automatiquement Cloudflare et la fabrication Windows ; ne pas annoncer un nouvel EXE disponible tant que sa fabrication et son fichier téléchargeable ne sont pas confirmés. L’aperçu Cloudflare ne devient pas un serveur de synchronisation en ligne.
+
+---
+
 ## Fluidité et musique — version 2.2.0 du 22 octobre 2026
 
 Cette section remplace les anciennes explications concernant l’envoi intégral du tournoi à chaque modification, le lecteur musical recréé et le chrono inclus dans le contexte général. **Conserver les emplacements des boutons, les couleurs choisies, les règles sportives et le fonctionnement des sessions.** Le logiciel Windows continue à démarrer son serveur local ; aucune connexion Internet n’est nécessaire pendant le tournoi. Cette mise à jour améliore ce fonctionnement existant, sans changer de technologie Windows.

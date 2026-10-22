@@ -23,9 +23,10 @@ test('nouveau réseau : modifications seules, scores concurrents, reconnexion, c
   const stop = async () => { const exit = once(child, 'exit'); child.kill(); await exit; };
   const connect = async (role = 'admin') => {
     const socket = io(url, { auth: { role, protocol: 2 }, transports: ['websocket'], reconnection: false, autoConnect: false });
-    const client = { socket, state: null, revision: 0, full: 0, patches: [], clocks: [], sounds: [], music: [] }; clients.push(client);
+    const client = { socket, state: null, revision: 0, full: 0, patches: [], clocks: [], sounds: [], music: [], live: [] }; clients.push(client);
     socket.on('state_update', (state, meta) => { client.state = state; client.revision = meta?.revision ?? 0; client.full++; });
     socket.on('state_patch', patch => { assert.equal(patch.baseRevision, client.revision); client.state = applyStatePatch(client.state, patch.patches); client.revision = patch.revision; client.patches.push(patch); });
+    socket.on('live_score_update', score => client.live.push(score));
     socket.on('timer_sync', clock => client.clocks.push(clock)); socket.on('audio_event', sound => client.sounds.push(sound)); socket.on('music_sync', music => client.music.push(music));
     const ready = once(socket, 'connect'); socket.connect(); await ready; return client;
   };
@@ -34,6 +35,19 @@ test('nouveau réseau : modifications seules, scores concurrents, reconnexion, c
     await start(); const admin = await connect(); const tablet = await connect('court'); const tv = await connect('tv');
     const state = { ...structuredClone(initialData), currentSession: 1, teams: [{ id: 'a', name: 'A', categoryId: 'c', players: [] }, { id: 'b', name: 'B', categoryId: 'c', players: [] }], pools: [{ id: 'p', teams: ['a', 'b'] }], matches: [{ id: 'm', poolId: 'p', court: 1, sessionNumber: 1, round: 'Pool', team1Id: 'a', team2Id: 'b', status: 'pending', score1: null, score2: null }, { id: 'm2', poolId: 'p', court: 1, sessionNumber: 2, round: 'Pool', team1Id: 'a', team2Id: 'b', status: 'pending', score1: null, score2: null }], sponsors: [{ id: 's', name: 'TEST', logo: 'data:image/png;base64,' + 'A'.repeat(1024 * 1024) }] };
     admin.socket.emit('initialize_state', state); await until(() => tv.state?.matches.length === 2);
+    // Le live ne doit ni valider un match ni toucher aux classements/sauvegardes.
+    const officialBefore = tv.state, revisionBefore = tv.revision, patchCountBefore = tv.patches.length;
+    await until(async () => { try { return (await disk()).matches.length === 2; } catch { return false; } });
+    const diskBefore = await readFile(path.join(dataDir, 'tournament_data.json'), 'utf8');
+    const liveMessages = []; tv.socket.on('live_score_update', score => liveMessages.push(score));
+    for (let n = 0; n < 100; n++) tablet.socket.emit('live_score', { court: 1, matchId: 'm', team1Name: 'A', team2Name: 'B', score1: n, score2: 8, status: 'finished', standings: { injected: true } });
+    await until(() => liveMessages.at(-1)?.score1 === 99);
+    assert.equal(tv.state, officialBefore); assert.equal(tv.revision, revisionBefore); assert.equal(tv.patches.length, patchCountBefore);
+    assert.equal(tv.state.matches[0].score1, null); assert.equal('standings' in liveMessages.at(-1), false);
+    assert.equal(await readFile(path.join(dataDir, 'tournament_data.json'), 'utf8'), diskBefore);
+    const liveLate = await connect('tv');
+    // L'état officiel d'une nouvelle TV reste inchangé lui aussi.
+    await until(() => liveLate.state && liveLate.live.length); assert.equal(liveLate.state.matches[0].score1, null); assert.equal(liveLate.live.at(-1).score1, 99);
     const fullBefore = tv.full, sponsor = tv.state.sponsors, playlist = tv.state.playlist;
     const action = (id, value) => send(admin.socket, 'tournament_action', { id, action: value });
     assert.equal((await action('next-1', { type: 'NEXT_SESSION' })).status, 'received'); await until(() => tv.state.currentSession === 2);

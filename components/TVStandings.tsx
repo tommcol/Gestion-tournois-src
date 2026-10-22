@@ -1,6 +1,46 @@
-import React, { useMemo, useEffect } from 'react';
-import { useTournament } from '../context/TournamentContext';
+import React, { useMemo, useEffect, useCallback } from 'react';
+import { useTournamentFields, useTournamentSelector, shallowEqual } from '../context/TournamentContext';
 import { Standing } from '../types';
+
+const EMPTY_STANDINGS: Standing[] = [];
+export const TVStandingTable = React.memo(function TVStandingTable({ poolStandings, startIndex, fontSize, rowPadding, getTeamName }: { poolStandings: Standing[]; startIndex: number; fontSize: number; rowPadding: string; getTeamName: (id: string) => string }) {
+    return (
+        <table className="w-full text-left">
+            <thead>
+                <tr
+                    className="text-gray-400 uppercase tracking-wider border-b border-gray-700/30"
+                    style={{ fontSize: `${Math.round(fontSize * 0.78)}px` }}
+                >
+                    <th style={{ padding: rowPadding }} className="font-black w-[60%]">Equipe</th>
+                    <th style={{ padding: rowPadding }} className="text-center font-black text-blue-400 w-[20%]">Pts</th>
+                    <th style={{ padding: rowPadding }} className="text-center font-black w-[20%]">+/-</th>
+                </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700/20">
+                {poolStandings.map((standing, idx) => {
+                    const absoluteIdx = startIndex + idx;
+                    return (
+                        <tr
+                            key={standing.teamId}
+                            style={{ fontSize: `${fontSize}px` }}
+                            className={absoluteIdx < 2 ? 'text-yellow-400 font-bold' : 'text-white'}
+                        >
+                            <td style={{ padding: rowPadding }} className="truncate">
+                                {absoluteIdx + 1}. {getTeamName(standing.teamId)}
+                            </td>
+                            <td style={{ padding: rowPadding }} className="text-center font-black">
+                                {standing.points}
+                            </td>
+                            <td style={{ padding: rowPadding }} className="text-center font-mono">
+                                {standing.pointsDifference > 0 ? `+${standing.pointsDifference}` : standing.pointsDifference}
+                            </td>
+                        </tr>
+                    );
+                })}
+            </tbody>
+        </table>
+    );
+});
 
 interface TVStandingsProps {
     isFinal?: boolean;
@@ -9,8 +49,8 @@ interface TVStandingsProps {
 }
 
 const TVStandings: React.FC<TVStandingsProps> = ({ isFinal, pageIndex, setPageIndex }) => {
-    const { state } = useTournament();
-    const { categories, teams, pools, standings, isPoolStageFinished } = state;
+    const { categories, teams, pools, isPoolStageFinished } = useTournamentFields('categories', 'teams', 'pools', 'isPoolStageFinished');
+    const poolSizes = useTournamentSelector(state => state.pools.map(pool => state.standings[pool.id]?.length || ((pool as any).teamIds || pool.teams || []).length), shallowEqual);
 
     const ZONE_UTILE_PX = 820;
 
@@ -19,11 +59,7 @@ const TVStandings: React.FC<TVStandingsProps> = ({ isFinal, pageIndex, setPageIn
         const pages: { categoryIndex: number; poolPage: number; totalPoolPages: number }[] = [];
         categories.forEach((cat, catIdx) => {
             const catPools = pools.filter(p => p.id.startsWith(cat.id));
-            const maxTeams = Math.max(1, ...catPools.map(p => {
-                const s = standings[p.id] || [];
-                if (s.length > 0) return s.length;
-                return ((p as any).teamIds || p.teams || []).length;
-            }));
+            const maxTeams = Math.max(1, ...catPools.map(p => poolSizes[pools.indexOf(p)]));
             const poolsPerPage = maxTeams >= 5 ? 2 : 4;
             const totalPages = Math.ceil(catPools.length / poolsPerPage) || 1;
             for (let p = 0; p < totalPages; p++) {
@@ -31,7 +67,7 @@ const TVStandings: React.FC<TVStandingsProps> = ({ isFinal, pageIndex, setPageIn
             }
         });
         return pages;
-    }, [categories, pools, standings]);
+    }, [categories, pools, poolSizes]);
 
     useEffect(() => {
         // Si le pageIndex actuel dépasse le nombre de pages, revenir au début
@@ -52,26 +88,23 @@ const TVStandings: React.FC<TVStandingsProps> = ({ isFinal, pageIndex, setPageIn
     }, [pools, currentCategory]);
 
     const POOLS_PER_PAGE = useMemo(() => {
-        const maxTeams = Math.max(1, ...categoryPools.map(p => {
-            const s = standings[p.id] || [];
-            if (s.length > 0) return s.length;
-            return ((p as any).teamIds || p.teams || []).length;
-        }));
+        const maxTeams = Math.max(1, ...categoryPools.map(p => poolSizes[pools.indexOf(p)]));
         return maxTeams >= 5 ? 2 : 4;
-    }, [categoryPools, standings]);
+    }, [categoryPools, pools, poolSizes]);
 
     const visiblePools = useMemo(() => {
         const start = poolPage * POOLS_PER_PAGE;
         return categoryPools.slice(start, start + POOLS_PER_PAGE);
     }, [categoryPools, poolPage, POOLS_PER_PAGE]);
 
-    const getTeamName = (teamId: string) => teams.find(t => t.id === teamId)?.name || 'Équipe Inconnue';
+    const standings = useTournamentSelector(state => Object.fromEntries(visiblePools.map(pool => [pool.id, state.standings[pool.id] || EMPTY_STANDINGS])), shallowEqual);
+    const getTeamName = useCallback((teamId: string) => teams.find(t => t.id === teamId)?.name || 'Équipe Inconnue', [teams]);
 
     // Retourne les standings d'une poule, ou un classement initial si vide
     const getPoolStandings = (poolId: string) => {
         const existing = standings[poolId] || [];
         if (existing.length > 0) return existing;
-        
+
         // Standings vides : construire depuis les équipes de la poule
         const pool = pools.find(p => p.id === poolId);
         if (!pool) return [];
@@ -110,7 +143,7 @@ const TVStandings: React.FC<TVStandingsProps> = ({ isFinal, pageIndex, setPageIn
     const fontSize = useMemo(() => {
         let nbLignes: number;
         let facteur: number;
-        
+
         if (displayMode === 'single') {
             const teamCount = visiblePools[0] ? getPoolStandings(visiblePools[0].id).length : 1;
             const effectiveCount = teamCount > 10 ? Math.ceil(teamCount / 2) : teamCount;
@@ -124,7 +157,7 @@ const TVStandings: React.FC<TVStandingsProps> = ({ isFinal, pageIndex, setPageIn
             nbLignes = (maxTeamsInPool + 2) * 2;
             facteur = 0.52; // réduit pour éviter le débordement
         }
-        
+
         const hauteurParLigne = ZONE_UTILE_PX / nbLignes;
         const size = hauteurParLigne * facteur;
         return Math.min(42, Math.max(13, size));
@@ -134,42 +167,7 @@ const TVStandings: React.FC<TVStandingsProps> = ({ isFinal, pageIndex, setPageIn
 
     if (!currentCategory) return null;
 
-    const renderStandingsTable = (poolStandings: Standing[], startIndex: number = 0) => (
-        <table className="w-full text-left">
-            <thead>
-                <tr 
-                    className="text-gray-400 uppercase tracking-wider border-b border-gray-700/30"
-                    style={{ fontSize: `${Math.round(fontSize * 0.78)}px` }}
-                >
-                    <th style={{ padding: rowPadding }} className="font-black w-[60%]">Equipe</th>
-                    <th style={{ padding: rowPadding }} className="text-center font-black text-blue-400 w-[20%]">Pts</th>
-                    <th style={{ padding: rowPadding }} className="text-center font-black w-[20%]">+/-</th>
-                </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-700/20">
-                {poolStandings.map((standing, idx) => {
-                    const absoluteIdx = startIndex + idx;
-                    return (
-                        <tr
-                            key={standing.teamId}
-                            style={{ fontSize: `${fontSize}px` }}
-                            className={absoluteIdx < 2 ? 'text-yellow-400 font-bold' : 'text-white'}
-                        >
-                            <td style={{ padding: rowPadding }} className="truncate">
-                                {absoluteIdx + 1}. {getTeamName(standing.teamId)}
-                            </td>
-                            <td style={{ padding: rowPadding }} className="text-center font-black">
-                                {standing.points}
-                            </td>
-                            <td style={{ padding: rowPadding }} className="text-center font-mono">
-                                {standing.pointsDifference > 0 ? `+${standing.pointsDifference}` : standing.pointsDifference}
-                            </td>
-                        </tr>
-                    );
-                })}
-            </tbody>
-        </table>
-    );
+    const renderStandingsTable = (poolStandings: Standing[], startIndex = 0) => <TVStandingTable poolStandings={poolStandings} startIndex={startIndex} fontSize={fontSize} rowPadding={rowPadding} getTeamName={getTeamName} />;
 
     return (
         <div className="h-full flex flex-col overflow-hidden bg-gray-950/40 px-6 py-4">

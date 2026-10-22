@@ -2,7 +2,7 @@ import AppearanceSettings from './AppearanceSettings';
 import TVMomentSettings from './TVMomentSettings';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useTournament } from '../context/TournamentContext';
+import { useTournamentControls, useTournamentFields } from '../context/TournamentContext';
 import { Category, TournamentState } from '../types';
 import CategoryDialog from './CategoryDialog';
 import SponsorManager from './SponsorManager';
@@ -10,7 +10,8 @@ import ExportDialog from './ExportDialog';
 import { generateId } from '../utils/id';
 
 const TournamentConfig: React.FC = () => {
-  const { state, dispatch } = useTournament();
+  const { dispatch } = useTournamentControls();
+  const state = useTournamentFields('categories', 'soundConfig', 'tournamentName', 'numberOfCourts', 'timerDuration', 'breakDuration', 'matchDisplayDuration', 'sponsorDisplayDuration', 'enableCourtView', 'tvConfig');
   const { soundConfig } = state;
   const [tournamentName, setTournamentName] = useState(state.tournamentName);
   const [numberOfCourts, setNumberOfCourts] = useState(state.numberOfCourts);

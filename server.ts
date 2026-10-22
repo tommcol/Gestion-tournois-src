@@ -1,3 +1,4 @@
+import { readLiveScore } from './utils/liveScores';
 import { tournamentReducer } from './context/tournamentReducer';
 import { diffState } from './utils/statePatch';
 import { createCoalescedSave } from './utils/coalescedSave';
@@ -391,10 +392,11 @@ async function startServer() {
 
         // Score en temps réel pour la TV
         socket.on('live_score', (data) => {
-            // Stocker le score de ce terrain
-            liveScoresState[data.court] = data;
-            // Broadcaster à tous
-            io.emit('live_score_update', data);
+            const score = readLiveScore(data);
+            if (!score || !tournamentState || score.court > tournamentState.numberOfCourts) return;
+            // Strictement séparé : aucun reducer officiel, classement ou enregistrement ici.
+            liveScoresState[score.court] = score;
+            io.emit('live_score_update', score);
         });
 
         // Relay timer start to courts

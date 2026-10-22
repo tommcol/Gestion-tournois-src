@@ -1,10 +1,11 @@
 import { remainingSeconds } from '../utils/tournamentFlow';
 import React, { useState, useEffect, useRef } from 'react';
-import { useTournament, useOfficialClock } from '../context/TournamentContext';
+import { useTournamentControls, useTournamentFields, useOfficialClock } from '../context/TournamentContext';
 import { soundManager } from '../assets/sounds';
 
 const GlobalTimer: React.FC = () => {
-    const { state, emitAudioEvent, dispatch } = useTournament();
+    const { emitAudioEvent, dispatch } = useTournamentControls();
+    const state = useTournamentFields('currentSession', 'isFinalPhase', 'timerDuration', 'soundConfig', 'isTournamentStarted');
     const clock = useOfficialClock();
     const { timerDuration, soundConfig, isTournamentStarted } = state;
     const passive = new URLSearchParams(window.location.search).get('view')?.startsWith('tv') || new URLSearchParams(window.location.search).get('view') === 'court';

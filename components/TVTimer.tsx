@@ -1,9 +1,9 @@
 import { remainingSeconds } from '../utils/tournamentFlow';
 import React, { useState, useEffect } from 'react';
-import { useTournament, useOfficialClock } from '../context/TournamentContext';
+import { useTournamentControls, useTournamentFields, useOfficialClock } from '../context/TournamentContext';
 
 export default function TVTimer() {
-  const { state } = useTournament();
+  const state = useTournamentFields('currentSession', 'isFinalPhase', 'timerDuration');
   const clock = useOfficialClock();
   const [, setNow] = useState(Date.now());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);

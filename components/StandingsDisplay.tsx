@@ -1,13 +1,49 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { useTournament } from '../context/TournamentContext';
-import { calculatePoolStandings } from '../utils/standingsLogic';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { useTournamentFields, useTournamentSelector } from '../context/TournamentContext';
 import { getAdminTeamName } from '../utils/helpers';
-import { Standing } from '../types';
+import { Standing, Pool } from '../types';
+
+const EMPTY_STANDINGS: Standing[] = [];
+export const PoolStandingCard = React.memo(function PoolStandingCard({ pool, index, swiss, getTeamName }: { pool: Pool; index: number; swiss: boolean; getTeamName: (id: string) => string }) {
+    const standings = useTournamentSelector(state => state.standings[pool.id] || EMPTY_STANDINGS);
+    return (
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md">
+                        <h3 className="text-xl font-bold mb-3 border-b border-gray-200 dark:border-gray-700 pb-2">
+                            {swiss ? 'Classement Général' : `Poule ${String.fromCharCode(65 + index)}`}
+                        </h3>
+                        <table className="w-full text-sm text-left">
+                            <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700">
+                                <tr>
+                                    <th scope="col" className="px-2 py-2 w-1/3">Équipe</th>
+                                    <th scope="col" className="px-1 py-2 text-center font-bold text-blue-600 dark:text-blue-400" title="Points (V=2, N=1)">Pts</th>
+                                    <th scope="col" className="px-1 py-2 text-center" title="Joués">J</th>
+                                    <th scope="col" className="px-1 py-2 text-center" title="Victoires">V</th>
+                                    <th scope="col" className="px-1 py-2 text-center" title="Nuls">N</th>
+                                    <th scope="col" className="px-1 py-2 text-center" title="Défaites">D</th>
+                                    <th scope="col" className="px-1 py-2 text-center" title="Différence de points">+/-</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {standings.map((standing) => (
+                                    <tr key={standing.teamId} className="border-b dark:border-gray-700">
+                                        <td className="px-2 py-2 font-medium truncate max-w-[120px]" title={getTeamName(standing.teamId)}>{getTeamName(standing.teamId)}</td>
+                                        <td className="px-1 py-2 text-center font-bold">{standing.points}</td>
+                                        <td className="px-1 py-2 text-center">{standing.played}</td>
+                                        <td className="px-1 py-2 text-center">{standing.wins}</td>
+                                        <td className="px-1 py-2 text-center">{standing.draws}</td>
+                                        <td className="px-1 py-2 text-center">{standing.losses}</td>
+                                        <td className="px-1 py-2 text-center">{standing.pointsDifference > 0 ? `+${standing.pointsDifference}` : standing.pointsDifference}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+    );
+});
 
 const StandingsDisplay: React.FC = () => {
-    const { state } = useTournament();
-    const { categories, teams, pools, standings } = state;
+    const { categories, teams, pools } = useTournamentFields('categories', 'teams', 'pools');
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categories[0]?.id || '');
 
     useEffect(() => {
@@ -24,15 +60,15 @@ const StandingsDisplay: React.FC = () => {
         return categories.find(c => c.id === selectedCategoryId);
     }, [categories, selectedCategoryId]);
 
-    const getTeamName = (teamId: string) => {
+    const getTeamName = useCallback((teamId: string) => {
         const team = teams.find(t => t.id === teamId);
         return getAdminTeamName(team);
-    };
+    }, [teams]);
 
     return (
         <div className="space-y-6">
             <h1 className="text-3xl font-bold">Classements des Poules</h1>
-            
+
             <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md">
                 <div role="tablist" className="flex items-center gap-2 flex-wrap border-b border-gray-200 dark:border-gray-700 pb-4">
                     {categories.map(category => (
@@ -62,37 +98,7 @@ const StandingsDisplay: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {categoryPools.map((pool, index) => (
-                    <div key={pool.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md">
-                        <h3 className="text-xl font-bold mb-3 border-b border-gray-200 dark:border-gray-700 pb-2">
-                            {selectedCategory?.tournamentType === 'swiss' ? 'Classement Général' : `Poule ${String.fromCharCode(65 + index)}`}
-                        </h3>
-                        <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-gray-700 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700">
-                                <tr>
-                                    <th scope="col" className="px-2 py-2 w-1/3">Équipe</th>
-                                    <th scope="col" className="px-1 py-2 text-center font-bold text-blue-600 dark:text-blue-400" title="Points (V=2, N=1)">Pts</th>
-                                    <th scope="col" className="px-1 py-2 text-center" title="Joués">J</th>
-                                    <th scope="col" className="px-1 py-2 text-center" title="Victoires">V</th>
-                                    <th scope="col" className="px-1 py-2 text-center" title="Nuls">N</th>
-                                    <th scope="col" className="px-1 py-2 text-center" title="Défaites">D</th>
-                                    <th scope="col" className="px-1 py-2 text-center" title="Différence de points">+/-</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(standings[pool.id] || []).map((standing) => (
-                                    <tr key={standing.teamId} className="border-b dark:border-gray-700">
-                                        <td className="px-2 py-2 font-medium truncate max-w-[120px]" title={getTeamName(standing.teamId)}>{getTeamName(standing.teamId)}</td>
-                                        <td className="px-1 py-2 text-center font-bold">{standing.points}</td>
-                                        <td className="px-1 py-2 text-center">{standing.played}</td>
-                                        <td className="px-1 py-2 text-center">{standing.wins}</td>
-                                        <td className="px-1 py-2 text-center">{standing.draws}</td>
-                                        <td className="px-1 py-2 text-center">{standing.losses}</td>
-                                        <td className="px-1 py-2 text-center">{standing.pointsDifference > 0 ? `+${standing.pointsDifference}` : standing.pointsDifference}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                    <PoolStandingCard key={pool.id} pool={pool} index={index} swiss={selectedCategory?.tournamentType === 'swiss'} getTeamName={getTeamName} />
                 ))}
             </div>
         </div>
@@ -100,3 +106,4 @@ const StandingsDisplay: React.FC = () => {
 };
 
 export default StandingsDisplay;
+

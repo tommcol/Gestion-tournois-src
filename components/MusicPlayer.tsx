@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useSyncExternalStore, useRef } from 'react';
 import { soundManager } from '../assets/sounds';
-import { useTournament } from '../context/TournamentContext';
+import { useTournamentControls, useTournamentFields } from '../context/TournamentContext';
 import { getMusicController } from '../services/musicRuntime';
 import { Track } from '../services/MusicController';
 
 const MusicPlayer: React.FC = () => {
-    const { state, dispatch } = useTournament();
+    const { dispatch } = useTournamentControls();
+    const state = useTournamentFields('playlist');
     const playlist = state.playlist;
     const isTvMode = window.location.search.includes('view=tv');
     const [controller] = useState(getMusicController);

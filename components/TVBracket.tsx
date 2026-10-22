@@ -1,7 +1,7 @@
 import { currentFinalMatches } from '../utils/tournamentFlow';
 import React, { useMemo, useEffect } from 'react';
 import { FinalMatch, Team, Category } from '../types';
-import { useTournamentContext } from '../context/TournamentContext';
+import { useTournamentFields } from '../context/TournamentContext';
 import { useAutoFit } from '../hooks/useAutoFit';
 
 interface TVBracketProps {
@@ -23,7 +23,7 @@ const ROUND_ORDER: FinalMatch['round'][] = ['roundOf32', 'roundOf16', 'quarterFi
 const MATCHES_PER_PAGE = 4;
 
 const TVBracket: React.FC<TVBracketProps> = ({ category, finalMatches, teams }) => {
-    const { socket, state } = useTournamentContext();
+    const state = useTournamentFields('matchDisplayDuration');
     const getTeam = (id: string | null | undefined) => id ? teams.find(t => t.id === id) : null;
 
     const matchesByRound = useMemo(() => {

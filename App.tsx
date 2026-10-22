@@ -11,7 +11,7 @@ import FinalPhaseManager from './components/FinalPhaseManager';
 import GlobalTimer from './components/GlobalTimer';
 import HelpGuide from './components/HelpGuide';
 import MusicPlayer from './components/MusicPlayer';
-import { useTournament } from './context/TournamentContext';
+import { useTournamentControls, useTournamentFields } from './context/TournamentContext';
 import TVDisplay from './components/TVDisplay';
 import TeamRoadmaps from './components/TeamRoadmaps';
 import OfficialsManager from './components/OfficialsManager';
@@ -29,7 +29,8 @@ const App: React.FC = () => {
     sessionStorage.setItem('admin_active_view', view);
     setActiveView(view);
   };
-  const { state, isPreviewMode } = useTournament();
+  const { isPreviewMode } = useTournamentControls();
+  const state = useTournamentFields('tournamentName', 'appearance', 'enableCourtView');
   const { tournamentName } = state;
   const appearance = resolveAppearance(state.appearance);
   
@@ -228,7 +229,7 @@ const App: React.FC = () => {
             </NavItem>
           </nav>
           <div className="text-xs text-gray-500 mt-auto pt-4 border-t border-gray-700">
-            Version 2.2.0
+            Version 2.2.1
           </div>
         </aside>
         <main className="flex-1 p-4 md:p-8 overflow-y-auto">

@@ -1,3 +1,4 @@
+import { subscribeCourtReadiness } from '../utils/socketSubscriptions';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTournament } from '../context/TournamentContext';
 import { getAllQualifiedTeams } from '../utils/standingsLogic';
@@ -38,14 +39,7 @@ const FinalPhaseManager: React.FC = () => {
 
     useEffect(() => {
         if (!socket) return;
-        socket.on('court_ready_update', (data) => {
-            setReadyCourts(data.readyCourts);
-        });
-        socket.on('courts_reset', () => setReadyCourts([]));
-        return () => {
-            socket.off('court_ready_update');
-            socket.off('courts_reset');
-        };
+      return subscribeCourtReadiness(socket, setReadyCourts);
     }, [socket]);
 
     useEffect(() => {

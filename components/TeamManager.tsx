@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useTournament } from '../context/TournamentContext';
+import { useTournamentControls, useTournamentFields } from '../context/TournamentContext';
 import { Team, Player } from '../types';
 import AlertDialog from './AlertDialog';
 import TeamRoadmapDialog from './TeamRoadmapDialog';
@@ -216,7 +216,8 @@ const TeamForm: React.FC<TeamFormProps> = ({ team, onSave, onCancel, isRefereeMa
 }
 
 const TeamManager: React.FC = () => {
-    const { state, dispatch } = useTournament();
+    const { dispatch } = useTournamentControls();
+    const state = useTournamentFields('categories', 'teams');
     const { categories, teams } = state;
     const [editingTeam, setEditingTeam] = useState<Team | null>(null);
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>(categories[0]?.id || '');
@@ -458,3 +459,4 @@ const TeamManager: React.FC = () => {
 };
 
 export default TeamManager;
+

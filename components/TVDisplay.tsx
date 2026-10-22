@@ -1,7 +1,7 @@
 import { tvMoment, tvSettings, tvSessions } from '../utils/tournamentFlow';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useTournament, useOfficialClock } from '../context/TournamentContext';
+import { useTournament, useTournamentSelector, shallowEqual, useOfficialClock } from '../context/TournamentContext';
 import { soundManager } from '../assets/sounds';
 import NextSessionMatches from './NextSessionMatches';
 import PreviousSessionResults from './PreviousSessionResults';
@@ -9,15 +9,7 @@ import TVStandings from './TVStandings';
 import SponsorDisplay from './SponsorDisplay';
 import TVTimer from './TVTimer';
 import TVBracket from './TVBracket';
-import LiveScores from './LiveScores';
-
-interface LiveScore {
-    court: number;
-    team1Name: string;
-    team2Name: string;
-    score1: number;
-    score2: number;
-}
+import LiveScoreTicker from './LiveScoreTicker';
 
 interface TVDisplayProps {
     mode?: 'mixed' | 'sponsors_only';
@@ -45,7 +37,6 @@ const TVDisplay: React.FC = () => {
     });
     const [isMuted, setIsMuted] = useState(soundManager.getMuteState());
 
-    const [liveScores, setLiveScores] = useState<LiveScore[]>([]);
 
     const unlockAudio = async () => {
         await soundManager.ensureContextState();
@@ -87,7 +78,6 @@ const TVDisplay: React.FC = () => {
 
     useEffect(() => {
         if (clock?.type === 'prestart_begin' && sponsors.length) setPreStartSponsorIndex(Math.floor(Math.random() * sponsors.length));
-        if (clock?.type === 'timer_end') setLiveScores([]);
     }, [clock?.type, clock?.endsAt]);
     useEffect(() => {
         const next = sponsors[(sponsorIndex + 1) % sponsors.length];
@@ -96,11 +86,6 @@ const TVDisplay: React.FC = () => {
         void image.decode?.().catch(() => {});
     }, [sponsors, sponsorIndex]);
 
-    const formatPause = (sec: number) => {
-        const m = Math.floor(sec / 60);
-        const s = sec % 60;
-        return `${m}:${s < 10 ? '0' : ''}${s}`;
-    };
 
     useEffect(() => {
         const handleTimerEvent = (e: any) => {
@@ -124,7 +109,6 @@ const TVDisplay: React.FC = () => {
             if (type === 'timer_reset') setIsTimerActive(false);
             if (type === 'timer_end') {
                 setIsTimerActive(false);
-                setLiveScores([]); // Vider les scores en direct à la fin du chrono
                 // Démarrer la minuterie de pause si configurée
                 const pauseSec = state.breakDuration || 0;
                 if (pauseSec > 0) {
@@ -135,29 +119,7 @@ const TVDisplay: React.FC = () => {
 
         window.addEventListener('tournament_audio_event', handleTimerEvent);
 
-        if (socket) {
-            socket.on('live_score_update', (data: LiveScore) => {
-                setLiveScores(prev => {
-                    const existing = prev.findIndex(s => s.court === data.court);
-                    if (existing >= 0) {
-                        const updated = [...prev];
-                        updated[existing] = data;
-                        return updated;
-                    }
-                    return [...prev, data];
-                });
-            });
-
-            socket.on('courts_reset', () => setLiveScores([]));
-        }
-
-        return () => {
-            window.removeEventListener('tournament_audio_event', handleTimerEvent);
-            if (socket) {
-                socket.off('live_score_update');
-                socket.off('courts_reset');
-            }
-        };
+        return () => window.removeEventListener('tournament_audio_event', handleTimerEvent);
     }, [socket, sponsors, state.breakDuration]);
 
     const currentSessionMatches = useMemo(() => {
@@ -173,13 +135,7 @@ const TVDisplay: React.FC = () => {
     [currentSessionMatches]);
 
     // Récupération des données
-    const displayMatches = useMemo(() => {
-        if (isFinalPhase) return []; // Le tableau utilise ses propres données (allFinalMatches)
-        if (isPoolStageFinished) return [];
-
-        const targetSession = sessions.next;
-        return matches.filter(m => m.sessionNumber === targetSession);
-    }, [matches, isFinalPhase, isPoolStageFinished, sessions.next]);
+    const displayMatches = useTournamentSelector(current => current.isFinalPhase || current.isPoolStageFinished ? [] : current.matches.filter(m => m.sessionNumber === sessions.next).sort((a, b) => (a.court || 99) - (b.court || 99)), shallowEqual);
 
     const maxSession = useMemo(() => {
         const allMatches = isFinalPhase
@@ -188,17 +144,8 @@ const TVDisplay: React.FC = () => {
         return Math.max(0, ...allMatches.map(m => m.sessionNumber || 0));
     }, [matches, finalMatches, isFinalPhase]);
 
-    const resultsData = useMemo(() => {
-        if (isFinalPhase) return { matches: [], sessionNumber: 0 };
-
-        const targetSession = sessions.results;
-
-        if (targetSession <= 0) return { matches: [], sessionNumber: 0 };
-        return {
-            matches: matches.filter(m => m.sessionNumber === targetSession),
-            sessionNumber: targetSession
-        };
-    }, [matches, isFinalPhase, isPoolStageFinished, sessions.results]);
+    const resultMatches = useTournamentSelector(current => current.isFinalPhase || sessions.results <= 0 ? [] : current.matches.filter(m => m.sessionNumber === sessions.results).sort((a, b) => (a.court || 99) - (b.court || 99)), shallowEqual);
+    const resultsData = useMemo(() => ({ matches: resultMatches, sessionNumber: isFinalPhase || sessions.results <= 0 ? 0 : sessions.results }), [resultMatches, isFinalPhase, sessions.results]);
 
     const isLastPoolSession = useMemo(() => {
         if (isPoolStageFinished || isFinalPhase) return false;
@@ -425,7 +372,7 @@ const TVDisplay: React.FC = () => {
                                     ) : (
                                         <NextSessionMatches
                                             key={`matches-session-${isCurrentSessionLaunched ? currentSession + 1 : currentSession}`}
-                                            matches={[...displayMatches].sort((a,b) => (a.court || 99) - (b.court || 99)) as any}
+                                            matches={displayMatches}
                                             teams={teams}
                                             categories={categories}
                                             sessionNumber={isCurrentSessionLaunched ? currentSession + 1 : currentSession}
@@ -440,7 +387,7 @@ const TVDisplay: React.FC = () => {
                                 <div className="p-8 h-full">
                                     <PreviousSessionResults
                                         key={`results-session-${resultsData.sessionNumber}`}
-                                        matches={[...resultsData.matches].sort((a,b) => (a.court || 99) - (b.court || 99)) as any}
+                                        matches={resultsData.matches}
                                         teams={teams}
                                         categories={categories}
                                         sessionNumber={resultsData.sessionNumber}
@@ -551,55 +498,7 @@ const TVDisplay: React.FC = () => {
                     </div>}
 
                     {/* SCORES EN DIRECT DÉFILANTS (MARQUEE) */}
-                    <div className="flex-1 h-full relative overflow-hidden flex items-center bg-[#020617] group">
-                        {moment !== 'poolsOver' && pauseTimeLeft !== null && pauseTimeLeft > 0 ? (
-                            // Minuterie de pause
-                            <div className="flex-1 flex items-center justify-center gap-4">
-                                <span className="text-xl text-amber-400 font-black">
-                                    ⏸ Pause
-                                </span>
-                                <span className="text-2xl text-white font-black font-mono">
-                                    {formatPause(pauseTimeLeft)}
-                                </span>
-                                <span className="text-base text-slate-400">
-                                    — Prochain match dans {formatPause(pauseTimeLeft)}
-                                </span>
-                            </div>
-                        ) : liveScores.length > 0 && (tvConfig?.showLiveScores ?? false) ? (
-                            <div
-                                className="marquee-content animate-marquee"
-                                style={{ '--marquee-duration': `${Math.max(15, liveScores.length * 6)}s` } as any}
-                            >
-                                {Array.from({ length: 2 }).map((_, copyIdx) => (
-                                    <div key={`copy-${copyIdx}`} className="flex items-center gap-16 pr-16 shrink-0">
-                                        {liveScores.map((s, idx) => (
-                                            <div key={`${s.court}-${idx}`} className="flex items-center gap-4 shrink-0">
-                                                <div className="flex flex-col items-start">
-                                                    <span className="text-[10px] font-black text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/30 uppercase leading-none mb-1">Terrain</span>
-                                                    <span className="text-2xl font-black text-white leading-none">{s.court}</span>
-                                                </div>
-                                                <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-xl border border-white/5">
-                                                    <span className="text-xl font-bold text-slate-100 max-w-[200px] truncate">{s.team1Name}</span>
-                                                    <div className="flex items-center gap-2 bg-black/60 px-3 py-1 rounded-md border border-white/10 ring-1 ring-white/5">
-                                                        <span className="text-3xl font-mono font-black text-blue-400 leading-none">{s.score1}</span>
-                                                        <span className="text-lg text-slate-600 font-bold">:</span>
-                                                        <span className="text-3xl font-mono font-black text-blue-400 leading-none">{s.score2}</span>
-                                                    </div>
-                                                    <span className="text-xl font-bold text-slate-100 max-w-[200px] truncate">{s.team2Name}</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <span className="text-lg font-black text-white/10 tracking-[1.5em] uppercase pointer-events-none">
-                                    {state.tournamentName || "Tournoi Pro"} — Affichage Officiel
-                                </span>
-                            </div>
-                        )}
-                    </div>
+                    <LiveScoreTicker showLiveScores={tvConfig.showLiveScores ?? false} poolsOver={moment === 'poolsOver'} pauseTimeLeft={pauseTimeLeft} tournamentName={state.tournamentName} />
 
                     {/* BOUTON MUTE / INFOS */}
                     <div className="w-[160px] shrink-0 h-full flex items-center justify-center px-4 border-l border-white/5 bg-black/50 z-20">

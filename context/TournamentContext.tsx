@@ -1,3 +1,6 @@
+import { liveScoresChannel } from '../services/liveScoresChannel';
+import { createTournamentStore, TournamentStateScope, useTournamentSelector } from './TournamentStore';
+export { useTournamentSelector, useTournamentFields, shallowEqual } from './TournamentStore';
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { TournamentState, TournamentAction } from '../types';
@@ -23,14 +26,14 @@ async function loadLocal(): Promise<TournamentState> {
 const critical = (action: TournamentAction) => ['UPDATE_MATCH_SCORE', 'UPDATE_FINAL_MATCH_SCORE', 'SET_STATE', 'NEXT_SESSION', 'PREVIOUS_SESSION', 'CLEAR_DATA', 'RESET_TOURNAMENT'].includes(action.type);
 const ClockContext = createContext<ClockSnapshot | null>(null);
 const TournamentContext = createContext<{
-  state: TournamentState; dispatch: React.Dispatch<TournamentAction>;
+  dispatch: React.Dispatch<TournamentAction>;
   emitAudioEvent: (data: any) => void; emitMusicCommand: (data: any) => void;
   isLoaded: boolean; isPreviewMode: boolean; socket: Socket | null;
 } | undefined>(undefined);
 
 export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [state, setState] = useState(initialData);
-  const stateRef = useRef(state);
+  const [store] = useState(() => createTournamentStore(initialData));
+  const stateRef = useRef(store.getState());
   const [clock, setClock] = useState<ClockSnapshot | null>(null);
   const clockRef = useRef<ClockSnapshot | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -51,9 +54,9 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
   }, 300));
   const commit = useCallback((next: TournamentState, immediate = false) => {
     if (next === stateRef.current) return;
-    stateRef.current = next; setState(next);
+    stateRef.current = next; store.setState(next);
     if (!isRemote) void saveRef.current.save(next, immediate).catch(error => console.error('Copie locale non enregistrée:', error));
-  }, [isRemote]);
+  }, [isRemote, store]);
   const persistQueue = useCallback(() => {
     try { localStorage.setItem(QUEUE_KEY, JSON.stringify(queue.current)); }
     catch (error) { console.error('Commandes en attente non copiées:', error); }
@@ -95,7 +98,7 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
     };
     flushQueue.current = sendPending;
     const retry = setInterval(sendPending, 2000);
-    connection.on('connect', () => { clearTimeout(fallbackTimer); serverReady.current = false; inFlight.current.clear(); window.dispatchEvent(new Event('tournament_music_connected')); });
+    connection.on('connect', () => { liveScoresChannel.clear(); clearTimeout(fallbackTimer); serverReady.current = false; inFlight.current.clear(); window.dispatchEvent(new Event('tournament_music_connected')); });
     connection.on('disconnect', () => { serverReady.current = false; inFlight.current.clear(); setIsPreviewMode(true); });
     connection.on('connect_error', fallback);
     connection.on('server_empty', async () => {
@@ -119,9 +122,12 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
       catch { connection.emit('state_request'); }
     });
     const receiveClock = (snapshot: ClockSnapshot) => {
+      if (snapshot.type === 'timer_end') liveScoresChannel.clear();
       clockRef.current = snapshot; setClock(snapshot);
       window.dispatchEvent(new CustomEvent('tournament_clock_sync', { detail: snapshot }));
     };
+    connection.on('live_score_update', liveScoresChannel.receive);
+    connection.on('courts_reset', liveScoresChannel.clear);
     connection.on('timer_sync', receiveClock);
     connection.on('audio_event', data => {
       // Compatibilité avec un ancien serveur : le nouveau n’envoie plus les ticks ici.
@@ -151,14 +157,19 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
     socketRef.current?.emit('play_audio', snapshot);
   }, []);
   const emitMusicCommand = useCallback((data: any) => { socketRef.current?.emit('music_command', data); }, []);
-  const value = useMemo(() => ({ state, dispatch, emitAudioEvent, emitMusicCommand, isLoaded, isPreviewMode, socket }), [state, dispatch, emitAudioEvent, emitMusicCommand, isLoaded, isPreviewMode, socket]);
+  const value = useMemo(() => ({ dispatch, emitAudioEvent, emitMusicCommand, isLoaded, isPreviewMode, socket }), [dispatch, emitAudioEvent, emitMusicCommand, isLoaded, isPreviewMode, socket]);
   if (!isLoaded) return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900"><div className="text-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" /><p className="text-gray-600 dark:text-gray-400">Chargement des données...</p></div></div>;
-  return <TournamentContext.Provider value={value}><ClockContext.Provider value={clock}>{children}</ClockContext.Provider></TournamentContext.Provider>;
+  return <TournamentContext.Provider value={value}><TournamentStateScope store={store}><ClockContext.Provider value={clock}>{children}</ClockContext.Provider></TournamentStateScope></TournamentContext.Provider>;
 };
 export const useOfficialClock = () => useContext(ClockContext);
-export const useTournament = () => {
+export const useTournamentControls = () => {
   const context = useContext(TournamentContext);
   if (!context) throw new Error('useTournament must be used within a TournamentProvider');
   return context;
+};
+export const useTournament = () => {
+  const controls = useTournamentControls();
+  const state = useTournamentSelector(state => state);
+  return { ...controls, state };
 };
 export const useTournamentContext = useTournament;
