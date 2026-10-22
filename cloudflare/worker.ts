@@ -43,7 +43,11 @@ export class TournamentRoom {
   private broadcast(messages: Message[], sender?: RoomWebSocket) { for (const ws of this.ctx.getWebSockets()) this.send(ws, messages.filter(m => ws !== sender || !m.exceptSender)); }
   private async schedule() { const c = this.engine?.record.clock; if (c?.endsAt && ['timer_start', 'timer_tick'].includes(c.type)) await this.ctx.storage.setAlarm(c.endsAt); }
   async alarm() {
-    if (!this.engine) return; const messages = this.engine.expire(); if (messages.length) { this.save(); this.broadcast(messages); } await this.schedule();
+    if (!this.engine) return;
+    const previous = this.engine.record.clock;
+    const messages = this.engine.expire();
+    try { if (messages.length) this.save(); } catch (error) { this.engine.record.clock = previous; throw error; }
+    this.broadcast(messages); await this.schedule();
   }
   async fetch(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
@@ -87,17 +91,23 @@ export class TournamentRoom {
     this.serial = this.serial.catch(() => {}).then(async () => {
       if (!this.engine || typeof input !== 'string' || input.length > 10 * 1024 * 1024) return ws.close(1009, 'Message trop volumineux');
       let packet: any; try { packet = JSON.parse(input); } catch { return ws.close(1007, 'Message invalide'); }
-      const previous = JSON.stringify(this.engine.record);
+      const expired = this.engine.expire();
+      if (expired.length) { this.save(); this.broadcast(expired); }
+      // Les états du reducer sont immuables : pas de copie JSON de tous les matchs à chaque tick/live.
+      const previous: RoomRecord = { ...this.engine.record, receipts: { ...this.engine.record.receipts } };
+      const previousLive = new Map(this.engine.live);
+      let persisted = false;
       try {
-        const expired = this.engine.expire(); if (expired.length) { this.save(); this.broadcast(expired); }
         const result = this.engine.handle(ws.deserializeAttachment(), packet.event, packet.data);
         if (result.persist) this.save();
+        persisted = true;
+        // Une alarme indisponible ne doit jamais annuler un résultat déjà sauvegardé.
+        await this.schedule().catch(() => {});
         if (packet.event === 'state_request') this.send(ws, result.messages); else this.broadcast(result.messages, ws);
-        await this.schedule();
         if (packet.id) ws.send(JSON.stringify({ ack: packet.id, reply: result.reply }));
-      } catch (error) {
-        this.engine.record = JSON.parse(previous) as RoomRecord;
-        if (packet.id) ws.send(JSON.stringify({ ack: packet.id, reply: { status: 'retry', error: 'Sauvegarde non terminée. La commande sera réessayée.' } }));
+      } catch {
+        if (!persisted) { this.engine.record = previous; this.engine.live = previousLive; }
+        if (packet.id) try { ws.send(JSON.stringify({ ack: packet.id, reply: { status: 'retry', error: 'Sauvegarde non terminée. La commande sera réessayée.' } })); } catch {}
       }
     });
     await this.serial;
@@ -139,9 +149,16 @@ export class TournamentRoom {
     const headers = new Headers({ 'Content-Type': item.mime, 'Content-Length': String(end - start + 1), 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' });
     if (range) headers.set('Content-Range', `bytes ${start}-${end}/${item.size}`);
     let offset = 0;
-    const sql = this.ctx.storage.sql;
-    const body = new ReadableStream({ start(controller) {
-      for (const row of sql.exec('SELECT value FROM media_parts WHERE id=? ORDER BY part', id)) { const bytes = new Uint8Array(row.value); const next = offset + bytes.length; if (next > start && offset <= end) controller.enqueue(bytes.slice(Math.max(0, start - offset), Math.min(bytes.length, end - offset + 1))); offset = next; if (offset > end) break; } controller.close();
+    const rows = this.ctx.storage.sql.exec('SELECT value FROM media_parts WHERE id=? ORDER BY part', id)[Symbol.iterator]();
+    const body = request.method === 'HEAD' ? null : new ReadableStream({ pull(controller) {
+      for (;;) {
+        const row = rows.next(); if (row.done) { controller.close(); return; }
+        const bytes = new Uint8Array(row.value.value), next = offset + bytes.length;
+        const piece = next > start && offset <= end ? bytes.slice(Math.max(0, start - offset), Math.min(bytes.length, end - offset + 1)) : null;
+        offset = next;
+        if (piece?.length) { controller.enqueue(piece); if (offset > end) controller.close(); return; }
+        if (offset > end) { controller.close(); return; }
+      }
     } });
     return new Response(request.method === 'HEAD' ? null : body, { status: range ? 206 : 200, headers });
   }
