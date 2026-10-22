@@ -1,3 +1,6 @@
+import OnlineTournament from './OnlineTournament';
+import MediaFolders from './MediaFolders';
+import { deviceLink } from '../services/onlineSession';
 import AppearanceSettings from './AppearanceSettings';
 import TVMomentSettings from './TVMomentSettings';
 
@@ -177,6 +180,8 @@ const TournamentConfig: React.FC = () => {
       `}</style>
       <div className="space-y-4 max-w-4xl mx-auto">
 
+        <OnlineTournament />
+        <MediaFolders />
         <TVMomentSettings />
         {/* SECTION 1 - INFORMATIONS GÉNÉRALES */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -509,7 +514,7 @@ const TournamentConfig: React.FC = () => {
                                             {Array.from({ length: state.numberOfCourts }, (_, i) => i + 1).map(court => (
                                                 <button
                                                     key={court}
-                                                    onClick={() => window.open(`${window.location.origin}?view=court&court=${court}`, '_blank')}
+                                                    onClick={async () => { const target = window.open('', '_blank'); try { const url = await deviceLink('court', court); if (target) target.location.href = url; } catch (error) { target?.close(); alert(error instanceof Error ? error.message : 'Lien indisponible.'); } }}
                                                     className="flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 text-sm font-bold text-blue-700 dark:text-blue-300 transition-colors"
                                                 >
                                                     <span>Terrain {court}</span>

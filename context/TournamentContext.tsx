@@ -2,7 +2,9 @@ import { liveScoresChannel } from '../services/liveScoresChannel';
 import { createTournamentStore, TournamentStateScope, useTournamentSelector } from './TournamentStore';
 export { useTournamentSelector, useTournamentFields, useTournamentStateReader, shallowEqual } from './TournamentStore';
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, ReactNode } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
+import { AppSocket, OnlineSocket } from '../services/OnlineSocket';
+import { getOnlineSession, roomScope } from '../services/onlineSession';
 import { TournamentState, TournamentAction } from '../types';
 import { initialData } from '../data/initialData';
 import { tournamentReducer } from './tournamentReducer';
@@ -14,9 +16,9 @@ import { ClockSnapshot } from '../utils/tournamentFlow';
 import { generateId } from '../utils/id';
 import { receiveMusicCommand, setMusicSender } from '../services/musicChannel';
 
-const LEGACY_KEY = 'tournament_preview_state';
-const QUEUE_KEY = 'tournament_pending_actions_v2';
-const SERVER_KEY = 'tournament_local_server_seen';
+const LEGACY_KEY = 'tournament_preview_state' + (roomScope() === 'local' ? '' : ':' + roomScope());
+const QUEUE_KEY = 'tournament_pending_actions_v2:' + roomScope();
+const SERVER_KEY = 'tournament_local_server_seen:' + roomScope();
 interface Pending { id: string; action: TournamentAction }
 async function loadLocal(): Promise<TournamentState> {
   try { const saved = await loadTournamentState(); if (saved) return saved; } catch {}
@@ -28,7 +30,7 @@ const ClockContext = createContext<ClockSnapshot | null>(null);
 const TournamentContext = createContext<{
   dispatch: React.Dispatch<TournamentAction>;
   emitAudioEvent: (data: any) => void; emitMusicCommand: (data: any) => void;
-  isLoaded: boolean; isPreviewMode: boolean; socket: Socket | null;
+  isLoaded: boolean; isPreviewMode: boolean; socket: AppSocket | null;
 } | undefined>(undefined);
 
 export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -37,9 +39,10 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
   const [clock, setClock] = useState<ClockSnapshot | null>(null);
   const clockRef = useRef<ClockSnapshot | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [connectionIssue, setConnectionIssue] = useState('');
   const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const [socket, setSocket] = useState<AppSocket | null>(null);
+  const socketRef = useRef<AppSocket | null>(null);
   const serverReady = useRef(false);
   const hadServer = useRef(false);
   const revision = useRef(0);
@@ -63,22 +66,27 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
   }, []);
   const dispatch = useCallback((action: TournamentAction) => {
     if (isRemote) return;
-    if (hadServer.current || socketRef.current?.connected) {
+    if (getOnlineSession() || hadServer.current || socketRef.current?.connected) {
       queue.current.push({ id: generateId(), action }); persistQueue(); flushQueue.current();
     } else commit(tournamentReducer(stateRef.current, action), critical(action));
   }, [isRemote, commit, persistQueue]);
 
   useEffect(() => {
     let disposed = false, loaded = false;
-    try { hadServer.current = localStorage.getItem(SERVER_KEY) === 'true'; queue.current = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch {}
+    try { hadServer.current = !!getOnlineSession() || localStorage.getItem(SERVER_KEY) === 'true'; queue.current = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch {}
     const fallback = async () => {
       if (loaded || disposed) return;
       const saved = await loadLocal(); if (loaded || disposed) return;
+      if (getOnlineSession() && (isRemote || !localStorage.getItem(SERVER_KEY))) {
+        setConnectionIssue('Connexion au tournoi impossible pour le moment. Vérifiez Internet et le lien complet fourni par l’organisateur.');
+        return;
+      }
       loaded = true; commit(globalReducer(stateRef.current, { type: 'SET_STATE', payload: saved }));
       setIsLoaded(true); setIsPreviewMode(true);
     };
     const fallbackTimer = setTimeout(fallback, 1200);
-    const connection = io({ timeout: 3000, reconnectionAttempts: Infinity, auth: { role: isRemote ? remoteView : 'admin', protocol: 2 } });
+    const online = getOnlineSession();
+    const connection: AppSocket = online ? new OnlineSocket(online) : io({ timeout: 3000, reconnectionAttempts: Infinity, auth: { role: isRemote ? remoteView : 'admin', protocol: 2 } });
     socketRef.current = connection; setSocket(connection);
     const sendPending = () => {
       if (!connection.connected || !serverReady.current) return;
@@ -109,7 +117,7 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
     });
     connection.on('state_update', (incoming: TournamentState, metadata?: { revision?: number }) => {
       if (disposed) return;
-      loaded = true; clearTimeout(fallbackTimer); serverReady.current = true; hadServer.current = true;
+      loaded = true; setConnectionIssue(''); clearTimeout(fallbackTimer); serverReady.current = true; hadServer.current = true;
       try { localStorage.setItem(SERVER_KEY, 'true'); } catch {}
       revision.current = metadata?.revision ?? 0;
       const normalized = globalReducer(stateRef.current, { type: 'SET_STATE', payload: incoming });
@@ -158,7 +166,7 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
   }, []);
   const emitMusicCommand = useCallback((data: any) => { socketRef.current?.emit('music_command', data); }, []);
   const value = useMemo(() => ({ dispatch, emitAudioEvent, emitMusicCommand, isLoaded, isPreviewMode, socket }), [dispatch, emitAudioEvent, emitMusicCommand, isLoaded, isPreviewMode, socket]);
-  if (!isLoaded) return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900"><div className="text-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" /><p className="text-gray-600 dark:text-gray-400">Chargement des données...</p></div></div>;
+  if (!isLoaded) return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900"><div className="text-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" /><p className="text-gray-600 dark:text-gray-400">{connectionIssue || 'Chargement des données...'}</p>{connectionIssue && <a href={window.location.origin} className="block mt-4 text-blue-600">Revenir à la configuration</a>}</div></div>;
   return <TournamentContext.Provider value={value}><TournamentStateScope store={store}><ClockContext.Provider value={clock}>{children}</ClockContext.Provider></TournamentStateScope></TournamentContext.Provider>;
 };
 export const useOfficialClock = () => useContext(ClockContext);

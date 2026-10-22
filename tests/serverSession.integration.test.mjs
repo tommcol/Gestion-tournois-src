@@ -48,6 +48,15 @@ test('le serveur production démarre et archive la session quittée', async () =
     assert.equal(appPage.status, 200);
     assert.match(await appPage.text(), /<html/i);
 
+    // Les deux dossiers du logiciel Windows survivent sur disque et restent lisibles en HTTP.
+    const uploaded = [];
+    for (const [kind, mime, name] of [['musiques', 'audio/mpeg', 'Essai.mp3'], ['sponsors', 'image/png', 'Logo.png']]) {
+      const response = await fetch(`http://127.0.0.1:${port}/api/upload?kind=${kind}`, { method: 'POST', headers: { 'Content-Type': mime, 'x-file-name': name }, body: new Uint8Array([1, 2, 3, 4, 5]) });
+      assert.equal(response.status, 200); const file = await response.json(); assert.ok(file.url.startsWith(`/uploads/${kind}/`)); uploaded.push(file);
+      const contents = await fetch(`http://127.0.0.1:${port}${file.url}`, { headers: { Range: 'bytes=1-3' } }); assert.equal(contents.status, 206); assert.deepEqual(new Uint8Array(await contents.arrayBuffer()), new Uint8Array([2, 3, 4]));
+    }
+    const mediaList = await (await fetch(`http://127.0.0.1:${port}/api/media`)).json(); assert.equal(mediaList.length, 2); assert.ok(mediaList.some(file => file.name === 'Essai.mp3'));
+
     socket = io(`http://127.0.0.1:${port}`, { transports: ['websocket'], timeout: 3000 });
     await once(socket, 'connect');
     socket.emit('update_state', { currentSession: 1, matches: [], finalMatches: {}, marker: 'session-one' });
@@ -77,3 +86,4 @@ test('le serveur production démarre et archive la session quittée', async () =
     await rm(dataDir, { recursive: true, force: true });
   }
 });
+

@@ -1,3 +1,4 @@
+import { getOnlineSession, uploadMedia } from '../services/onlineSession';
 
 import React, { useState, useRef } from 'react';
 import { useTournament } from '../context/TournamentContext';
@@ -33,7 +34,8 @@ const SponsorManager: React.FC = () => {
                 return;
             }
             try {
-                const base64 = await readFileAsDataURL(file);
+                let base64: string;
+                try { base64 = (await uploadMedia(file, 'sponsors')).url; } catch (error) { if (getOnlineSession()) throw error; base64 = await readFileAsDataURL(file); }
                 setSponsorLogo(base64);
             } catch (e) {
                 setError("Erreur lors de la lecture du fichier.");
@@ -53,7 +55,8 @@ const SponsorManager: React.FC = () => {
             }
 
             try {
-                const base64 = await readFileAsDataURL(file);
+                let base64: string;
+                try { base64 = (await uploadMedia(file, 'sponsors')).url; } catch (error) { if (getOnlineSession()) throw error; base64 = await readFileAsDataURL(file); }
                 // On utilise le nom du fichier (sans l'extension) comme nom de sponsor par défaut
                 const nameFromFileName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
                 
@@ -182,3 +185,4 @@ const SponsorManager: React.FC = () => {
 };
 
 export default SponsorManager;
+

@@ -1,3 +1,4 @@
+import { uploadMedia } from '../services/onlineSession';
 import React, { useState, useEffect, useSyncExternalStore, useRef } from 'react';
 import { soundManager } from '../assets/sounds';
 import { useTournamentControls, useTournamentFields } from '../context/TournamentContext';
@@ -32,10 +33,8 @@ const MusicPlayer: React.FC = () => {
         const tracks: Track[] = [];
         for (const file of Array.from(files)) {
             try {
-                const response = await fetch('/api/upload', { method: 'POST', headers: { 'x-file-name': encodeURIComponent(file.name), 'Content-Type': file.type }, body: await file.arrayBuffer() });
-                if (!response.ok) throw new Error('Upload failed');
-                const data = await response.json(); tracks.push({ name: file.name, url: data.url });
-            } catch { window.alert(`La musique « ${file.name} » n’a pas été ajoutée. Vérifie la connexion au PC. L’ajout de musique n’est pas disponible dans l’aperçu Cloudflare.`); }
+                const data = await uploadMedia(file, 'musiques'); tracks.push({ name: file.name, url: data.url });
+            } catch (error) { window.alert(`La musique « ${file.name} » n’a pas été ajoutée. ${error instanceof Error ? error.message : 'Vérifiez la connexion.'}`); }
         }
         if (tracks.length) { if (!playlist.length) autoPlayFirst.current = true; dispatch({ type: 'UPDATE_PLAYLIST', payload: [...playlist, ...tracks] }); }
         setIsUploading(false); e.target.value = '';

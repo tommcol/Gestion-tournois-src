@@ -1,3 +1,4 @@
+import { roomScope } from '../services/onlineSession';
 
 import { openDB, IDBPDatabase } from 'idb';
 import { TournamentState } from '../types';
@@ -23,15 +24,16 @@ const getDB = () => {
 
 export const saveTournamentState = async (state: TournamentState) => {
   const db = await getDB();
-  await db.put(STORE_NAME, state, 'current');
+  await db.put(STORE_NAME, state, 'current:' + roomScope());
 };
 
 export const loadTournamentState = async (): Promise<TournamentState | null> => {
   const db = await getDB();
-  return await db.get(STORE_NAME, 'current');
+  return await db.get(STORE_NAME, 'current:' + roomScope()) || (roomScope() === 'local' ? await db.get(STORE_NAME, 'current') : null);
 };
 
 export const clearTournamentState = async () => {
   const db = await getDB();
-  await db.delete(STORE_NAME, 'current');
+  await db.delete(STORE_NAME, 'current:' + roomScope());
 };
+

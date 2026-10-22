@@ -1,3 +1,4 @@
+import { roomScope } from '../services/onlineSession';
 import { getStartingBonus } from '../utils/startingBonus';
 import { ClockSnapshot } from '../utils/tournamentFlow';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -14,7 +15,7 @@ interface Draft extends CourtSubmission {
 const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
   const { state, socket } = useTournamentContext();
   const clock = useOfficialClock();
-  const key = `src-court-draft-v1-${courtNumber}`;
+  const key = `src-court-draft-v1-${courtNumber}${roomScope() === 'local' ? '' : ':' + roomScope()}`;
   const [draft, setDraft] = useState<Draft | null>(() => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } });
   const draftRef = useRef(draft);
   const [connected, setConnected] = useState(!!socket?.connected);
@@ -67,7 +68,7 @@ const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
 
   useEffect(() => {
     if (!socket) return;
-    const connect = () => { setConnected(true); sending.current = false; };
+    const connect = () => { setConnected(true); sending.current = false; const current = draftRef.current; if (current?.phase === 'ready') socket.emit('court_ready', { court: courtNumber, matchId: current.matchId, categoryId: current.categoryId }); };
     const disconnect = () => { setConnected(false); sending.current = false; };
     socket.on('connect', connect); socket.on('disconnect', disconnect);
     return () => { socket.off('connect', connect); socket.off('disconnect', disconnect); };
@@ -130,7 +131,7 @@ const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
     <div role="status" className={`p-3 text-center text-sm font-bold ${connected ? 'bg-green-100 text-green-900' : 'bg-amber-100 text-amber-900'}`}>{connected ? 'Connecté au PC' : 'Hors connexion — gardez cette page ouverte. Les points et fautes restent sur cette tablette.'}</div>
     {storageError && <p role="alert" className="p-3 bg-red-100 text-red-900">La tablette ne peut pas garder les données. Notez le score et les fautes sur papier avant de fermer cette page.</p>}
     {!draft ? <p className="p-8 text-center">Aucun match prévu sur ce terrain.</p> : <main className="p-4 space-y-4">
-      {draft.phase === 'waiting' && <button className="w-full p-5 rounded-xl bg-blue-600 text-white text-xl font-bold" onClick={() => { socket?.emit('court_ready', { court: courtNumber, matchId: draft.matchId }); save({ ...draft, phase: 'ready' }); }}>Équipes prêtes</button>}
+      {draft.phase === 'waiting' && <button className="w-full p-5 rounded-xl bg-blue-600 text-white text-xl font-bold" onClick={() => { socket?.emit('court_ready', { court: courtNumber, matchId: draft.matchId, categoryId: draft.categoryId }); save({ ...draft, phase: 'ready' }); }}>Équipes prêtes</button>}
       {draft.phase === 'ready' && <p className="text-center">En attente du lancement par l’organisateur…</p>}
       <div className="grid grid-cols-2 gap-3">{([1, 2] as const).map(n => <div key={n} className="bg-white dark:bg-gray-800 rounded-xl p-3 text-center shadow-sm">
         <h2 className="font-bold break-words">{n === 1 ? draft.team1Name : draft.team2Name}</h2>

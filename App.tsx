@@ -1,3 +1,4 @@
+import { deviceLink, getOnlineSession } from './services/onlineSession';
 import { resolveAppearance, themeVariables } from './utils/appearance';
 import OrganizerNotifications from './components/OrganizerNotifications';
 
@@ -60,13 +61,10 @@ const App: React.FC = () => {
     }
   }, []);
   
-  const openTvMode = (muted: boolean = false) => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('view', 'tv');
-    if (muted) {
-      url.searchParams.set('mute', 'true');
-    }
-    window.open(url.toString(), '_blank');
+  const openTvMode = async (muted: boolean = false) => {
+    const target = window.open('', '_blank');
+    try { const url = await deviceLink('tv', undefined, muted); if (target) target.location.href = url; }
+    catch (error) { target?.close(); window.alert(error instanceof Error ? error.message : 'Lien TV indisponible.'); }
   };
 
   const renderView = useCallback(() => {
@@ -113,7 +111,7 @@ const App: React.FC = () => {
       <div className="appearance-tv relative h-screen w-screen overflow-hidden bg-black" data-color-mode={appearance.tv.mode} style={themeVariables(appearance.tv) as React.CSSProperties}>
         {isPreviewMode && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-amber-500/90 text-amber-950 font-bold px-4 py-1.5 rounded-full text-xs shadow-xl pointer-events-none border border-amber-300/50">
-            Mode aperçu : données sur ce navigateur uniquement ; tablettes et TV non synchronisées
+            {getOnlineSession() ? 'Connexion au tournoi interrompue — reconnexion en cours, les scores restent conservés.' : 'Mode local navigateur : ouvrez Configuration pour créer ou rejoindre un tournoi en ligne.'}
           </div>
         )}
         <TVDisplay />
@@ -144,7 +142,7 @@ const App: React.FC = () => {
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span>Mode aperçu : données sur ce navigateur uniquement ; tablettes et TV non synchronisées</span>
+            <span>{getOnlineSession() ? 'Connexion au tournoi interrompue — reconnexion en cours, les scores restent conservés.' : 'Mode local navigateur : ouvrez Configuration pour créer ou rejoindre un tournoi en ligne.'}</span>
           </div>
         )}
         <div className="flex-1 overflow-hidden">
@@ -161,7 +159,7 @@ const App: React.FC = () => {
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <span>Mode aperçu : données sur ce navigateur uniquement ; tablettes et TV non synchronisées</span>
+          <span>{getOnlineSession() ? 'Connexion au tournoi interrompue — reconnexion en cours, les scores restent conservés.' : 'Mode local navigateur : ouvrez Configuration pour créer ou rejoindre un tournoi en ligne.'}</span>
         </div>
       )}
       <OrganizerNotifications />
@@ -229,7 +227,7 @@ const App: React.FC = () => {
             </NavItem>
           </nav>
           <div className="text-xs text-gray-500 mt-auto pt-4 border-t border-gray-700">
-            Version 2.3.1
+            Version 2.4.0
           </div>
         </aside>
         <main className="flex-1 p-4 md:p-8 overflow-y-auto">

@@ -1,3 +1,32 @@
+## Tournois en ligne et dossiers médias — version 2.4.0 du 22 octobre 2026
+
+### Deux modes conservés
+- Windows / réseau local : serveur Express + Socket.IO existant, sans Internet. Les anciens fichiers et liens /uploads restent lisibles.
+- Cloudflare : véritable serveur de tournoi dans un Durable Object SQLite « TournamentRoom », déclaré dans wrangler.jsonc avec migration online-v1. Déploiement automatique via GitHub ; aucun bucket R2 ou secret manuel requis pour cette version.
+- Depuis Configuration, « Créer mon tournoi en ligne » copie explicitement la préparation actuelle vers un nouveau tournoi privé. L’ouverture de l’accueil seule ne publie aucune donnée. « Retrouver mon dernier tournoi » et « Rejoindre » permettent de reprendre un tournoi existant.
+- Un lien organisateur donne les commandes ; les liens TV sont en lecture et chaque lien tablette est limité à son terrain. Les secrets restent dans le fragment #access (pas dans la requête HTTP), puis dans le protocole de négociation WebSocket. Ne jamais mettre ces liens dans le guide, les logs ou un dépôt public. Garder le lien organisateur en favori : pas de récupération de compte par email dans cette version.
+- Pour synchroniser, ouvrir les liens du MÊME tournoi, pas les simples anciennes adresses ?view=court. Chaque appareil doit avoir Internet. Le mode Windows local reste indépendant : pas de basculement automatique ou fusion entre un tournoi local et un tournoi en ligne.
+
+### Synchronisation et sauvegardes
+- services/OnlineSocket.ts adapte les messages existants à WebSocket natif ; services/onlineSession.ts gère les liens, accès et fichiers. Le serveur en ligne contrôle les rôles ; changer ?court= ne donne pas accès à un autre terrain.
+- cloudflare/roomEngine.ts réutilise tournamentReducer, receiveCourtScore et diffState. Les commandes officielles passent par le serveur, sont sauvegardées avant accusé de réception, identifiées pour éviter les doublons et diffusées par modifications partielles. Un score live ne lance AUCUN classement ni résultat officiel.
+- Le voyant prêt, les notifications de prolongation et les conflits de scores suivent les mêmes messages que Windows. Une tablette prête se resignale à la reconnexion ; les points et fautes restent dans son brouillon. Résultat non reçu = conservé à l’écran et renvoyé après reconnexion. Un score tardif différent attend le choix de l’organisateur.
+- Chrono : échéance serveur commune et alarme Durable Object ; pas de sauvegarde complète du tournoi à chaque seconde. Les horloges affichent l’échéance localement, les ticks ne redonnent pas de temps. Les sons restent soumis à l’autorisation audio du navigateur.
+- Les sauvegardes du tournoi, du chrono, des accusés et des fichiers sont durables. Le document principal, les métadonnées de contrôle et les sauvegardes de sessions sont séparés : position musicale ou voyant prêt ne réécrivent pas tous les matchs. Jusqu’à cinq sessions précédentes sont conservées, avec un plafond de taille ; le JSON d’export reste utilisable.
+- Les caches navigateur, commandes en attente, brouillons tablette et position musicale sont isolés par identifiant de tournoi. Ne pas mélanger avec le cache Windows historique.
+
+### Dossiers Musiques / Sponsors
+- Configuration contient deux dossiers et permet sélection multiple, liste et réutilisation par « Utiliser ». Ajouter au dossier ajoute aussi au tournoi ; retirer une musique de la playlist ou un sponsor de la diffusion ne supprime pas son fichier.
+- En ligne : fichiers stockés en morceaux SQLite, avec liens opaques non devinables ; lecture audio avec Range/206 (déplacement dans un morceau). Musique 50 Mo maximum, image PNG/JPG/WEBP 2 Mo maximum, 256 Mo cumulés par tournoi. Les images SVG ne sont pas acceptées comme fichiers en ligne. Aucun fichier utilisateur n’est ajouté au GitHub.
+- Windows : dossiers physiques uploads/musiques et uploads/sponsors dans le répertoire de données de l’application ; l’ajout depuis le lecteur et la gestion Sponsors y enregistre aussi les fichiers. Les anciens sponsors intégrés en image dans un JSON restent compatibles.
+- Les fichiers médias ne sont PAS intégrés aux sauvegardes JSON. Les musiques d’un ancien PC (/uploads/...) doivent être ajoutées de nouveau au dossier en ligne : un serveur Cloudflare ne peut pas lire le disque de ce PC.
+- Le mode préparation dans le navigateur seul n’a pas de serveur de fichiers : créer le tournoi en ligne avant les ajouts, ou utiliser Windows.
+
+### Vérifications et maintenance
+- tests/onlineRoom.test.mjs : droits TV/terrains, voyant prêt, live sans classement, score officiel, renvoi après redémarrage, chrono et mises à jour partielles. Test Miniflare avec WebSockets, SQLite persistant, upload audio, lecture partielle et refus des accès non autorisés.
+- Tests Cloudflare exécutés avec Miniflare/Workerd en plus des scénarios Windows existants. GitHub Actions utilise Node 22 (requis par le runtime de test Cloudflare). Tester aussi après le déploiement réel avant de déclarer le mode en ligne opérationnel.
+- Aucun changement des règles sportives, classements de départage ou disposition des commandes générales dans cette version.
+
 ## Ajustements des sélecteurs et impressions — version 2.3.1 du 22 octobre 2026
 
 - Poules : « Équipes par poule » utilise désormais la même liste de choix et le même style que « Matchs par équipe » en Suisse. Les choix vont de 2 au nombre d’équipes de la catégorie (avec conservation de la valeur courante et du choix initial 4).

@@ -54,23 +54,33 @@ async function startServer() {
         fs.mkdirSync(UPLOADS_DIR, { recursive: true });
     }
 
-    app.post('/api/upload', express.raw({ type: '*/*', limit: '50mb' }), (req, res) => {
-        let originalFileName = req.headers['x-file-name'] as string;
-        if (!originalFileName) return res.status(400).send('Missing file name');
-        
-        let fileName = originalFileName;
-        try {
-            fileName = decodeURIComponent(originalFileName);
-        } catch (e) {
-            // Fallback if decoding fails
+    // Deux dossiers physiques dans les données Windows ; les anciens liens /uploads restent lisibles.
+    app.get('/api/media', async (_req, res) => {
+        const files: any[] = [];
+        for (const kind of ['musiques', 'sponsors']) {
+            const directory = path.join(UPLOADS_DIR, kind);
+            await fs.promises.mkdir(directory, { recursive: true });
+            for (const entry of await fs.promises.readdir(directory, { withFileTypes: true })) {
+                if (!entry.isFile()) continue;
+                const stat = await fs.promises.stat(path.join(directory, entry.name));
+                files.push({ id: `${kind}/${entry.name}`, kind, name: entry.name.replace(/^[a-f0-9-]+_/, ''), size: stat.size, mime: '', url: `/uploads/${kind}/${encodeURIComponent(entry.name)}` });
+            }
         }
-        
-        // Renommage automatique avec préfixe Date.now()
-        const finalFileName = `${Date.now()}_${path.basename(fileName)}`;
-        const filePath = path.join(UPLOADS_DIR, finalFileName);
-        
-        fs.writeFileSync(filePath, req.body);
-        res.json({ url: `/uploads/${finalFileName}` });
+        res.json(files);
+    });
+    app.post('/api/upload', express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+        const kind = req.query.kind === 'sponsors' ? 'sponsors' : 'musiques';
+        if (!req.headers['x-file-name'] || !Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'Fichier vide.' });
+        let fileName: string; try { fileName = decodeURIComponent(String(req.headers['x-file-name'])); } catch { return res.status(400).json({ error: 'Nom de fichier invalide.' }); }
+        const mime = String(req.headers['content-type'] || '').split(';')[0];
+        if (kind === 'sponsors' && (!['image/png', 'image/jpeg', 'image/webp'].includes(mime) || req.body.length > 2 * 1024 * 1024)) return res.status(400).json({ error: 'Image PNG, JPG ou WEBP de 2 Mo maximum.' });
+        if (kind === 'musiques' && !mime.startsWith('audio/')) return res.status(400).json({ error: 'Choisissez un fichier audio.' });
+        const finalFileName = `${crypto.randomUUID()}_${path.basename(fileName).replace(/[\\/\x00-\x1f]/g, '_')}`;
+        try {
+            await fs.promises.mkdir(path.join(UPLOADS_DIR, kind), { recursive: true });
+            await fs.promises.writeFile(path.join(UPLOADS_DIR, kind, finalFileName), req.body);
+            res.json({ id: `${kind}/${finalFileName}`, kind, name: fileName, mime, size: req.body.length, url: `/uploads/${kind}/${encodeURIComponent(finalFileName)}` });
+        } catch { res.status(500).json({ error: 'Le dossier n’a pas pu être enregistré.' }); }
     });
 
     app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '1y', immutable: true }));
