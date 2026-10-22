@@ -396,7 +396,7 @@ const TVDisplay: React.FC = () => {
                     transform: `scale(${scale})`,
                     transformOrigin: 'center center',
                 }}
-                className="bg-slate-900 text-white flex flex-col font-sans shrink-0 relative overflow-hidden shadow-2xl"
+                className="tv-canvas bg-slate-900 text-white flex flex-col font-sans shrink-0 relative overflow-hidden shadow-2xl"
             >
                 {/* ZONE PRINCIPALE (HAUT) */}
                 <main className="flex-1 overflow-hidden relative">
@@ -495,7 +495,7 @@ const TVDisplay: React.FC = () => {
                     </div>
 
                     {isPreStarting && tvConfig.showStartSponsor && (
-                        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center"
+                        <div className="tv-prestart absolute inset-0 z-40 flex flex-col items-center justify-center"
                             style={{ background: 'rgba(2,6,23,0.97)' }}
                         >
                             {/* Session */}
@@ -532,7 +532,7 @@ const TVDisplay: React.FC = () => {
                 {/* PIED DE PAGE TV (BAS) */}
                 <footer className="h-[108px] bg-black border-t border-white/5 flex items-center overflow-hidden shrink-0 relative shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
                     {/* CHRONOMÈTRE BLOQUÉ À GAUCHE */}
-                    {tvConfig.showChronoOnTv && <div className="w-[288px] h-full bg-blue-700 flex flex-col items-center justify-center border-r border-blue-500/50 shadow-[10px_0_25px_rgba(0,0,0,0.4)] z-20 shrink-0">
+                    {tvConfig.showChronoOnTv && <div className="tv-clock w-[288px] h-full bg-blue-700 flex flex-col items-center justify-center border-r border-blue-500/50 shadow-[10px_0_25px_rgba(0,0,0,0.4)] z-20 shrink-0">
                         <div className="text-xs uppercase font-black tracking-[0.3em] text-blue-200 mb-0.5 opacity-80">Chrono</div>
                         <TVTimer />
                     </div>}

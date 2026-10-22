@@ -1,3 +1,4 @@
+import AppearanceSettings from './AppearanceSettings';
 import TVMomentSettings from './TVMomentSettings';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -73,7 +74,7 @@ const TournamentConfig: React.FC = () => {
       if (state.tvConfig) {
           setTvConfig(state.tvConfig);
       }
-  }, [state]);
+  }, [state.tournamentName, state.numberOfCourts, state.timerDuration, state.breakDuration, state.matchDisplayDuration, state.sponsorDisplayDuration, state.enableCourtView, state.tvConfig, state.soundConfig]);
 
   const handleSaveConfig = () => {
     // Validations
@@ -568,6 +569,7 @@ const TournamentConfig: React.FC = () => {
                 </button>
             </div>
         </div>
+        <AppearanceSettings />
       </div>
       {dialogOpenFor !== null && (
         <CategoryDialog 

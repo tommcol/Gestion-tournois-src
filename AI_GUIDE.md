@@ -7,6 +7,28 @@
 ---
 
 
+## Apparence Bleu électrique — mise à jour du 22 octobre 2026
+
+L’utilisateur a choisi la proposition graphique « Bleu électrique ». Il a autorisé son application avec des couleurs personnalisables. C’est un habillage : conserver les emplacements, dimensions, ordre, libellés et comportements des boutons, du chrono et des écrans. Les images proposées servaient d’inspiration ; leurs filtres, logos fictifs ou boutons supplémentaires ne sont pas des fonctionnalités à ajouter.
+
+### Utilisation
+Dans **Configuration**, tout en bas, après les rubriques existantes, ouvrir **Apparence — couleurs de l’application et de la TV**. Pour l’organisateur et pour la TV, choisir séparément une couleur principale (palette proposée ou sélecteur de couleur libre) et un fond clair ou sombre. Les choix sont enregistrés automatiquement dans la même sauvegarde que le tournoi. Les sauvegardes anciennes sans apparence adoptent le Bleu électrique : organisateur clair et TV sombre. **Revenir au Bleu électrique** rétablit les couleurs des deux écrans, sans modifier les équipes, les scores ou le chrono.
+
+L’habillage colore les commandes principales, l’onglet sélectionné, les fonds, les séparations et les accents des matchs/classements TV. Les boutons gardent leur place et leur taille ; leurs coins et ombres sont adoucis. Démarrer/valider reste vert, la pause orange et les actions sensibles rouges. Les logos des sponsors et les couleurs des catégories ne sont pas recolorés. La tablette conserve son habillage précédent.
+
+### Code et sauvegarde
+- `types.ts` : `ScreenAppearance` (couleur `accent` et `mode` clair/sombre), `AppearanceConfig` (organisateur et TV), champ facultatif `TournamentState.appearance` pour compatibilité des sauvegardes.
+- `utils/appearance.ts` : valeurs de départ, six couleurs proposées, validation stricte des couleurs, calcul des contrastes et variables de couleur. Le texte d’un bouton passe au blanc ou au bleu très sombre selon la couleur choisie pour rester lisible. Les textes d’accent sont éclaircis/assombris si nécessaire.
+- `components/AppearanceSettings.tsx` : rubrique repliable ajoutée à la fin de Configuration, deux aperçus, choix des couleurs, fond et retour au modèle. Les mises à jour passent par `UPDATE_CONFIG` ; aucune nouvelle méthode de sauvegarde.
+- `App.tsx` : variables limitées à `.appearance-organizer` ou `.appearance-tv`, indépendamment. La vue terrain ne reçoit pas ces styles.
+- `index.css` : remplace l’ancien habillage Vestiaire orange par Bleu électrique ; modifie les couleurs, rayons des angles et ombres, sans modifier le positionnement, le dimensionnement ou l’ordre des commandes existantes. L’habillage TV conserve le cadre 1920 × 1080 et toute la logique de diffusion.
+- `TournamentConfig.tsx` : les champs de configuration ne sont plus réinitialisés pour une simple modification d’apparence ; seuls leurs paramètres correspondants déclenchent leur mise à jour.
+- `tests/appearance.test.mjs` : anciennes sauvegardes, lisibilité des couleurs, absence de modification des données sportives et conservation après réouverture/export/import.
+
+Sur le réseau local, l’apparence choisie est transmise aux écrans par le mécanisme existant. Sur Cloudflare, chaque navigateur conserve son aperçu et ses choix localement ; cette fonction n’ajoute pas la synchronisation des appareils.
+
+---
+
 ## Mise à jour du 22 octobre 2026 — décisions de fonctionnement
 
 Cette section décrit les corrections intégrées à partir du dépôt `8ff7582746194d4ceacc0c80f61846f2221e9996`. Les repères de lignes présents plus bas proviennent de la version précédente : chercher les noms des fonctions plutôt que ces numéros. Ce guide explique le logiciel ; il ne remplace pas le règlement du tournoi.

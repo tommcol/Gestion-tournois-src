@@ -25,220 +25,6 @@
   }
 }
 
-/* Vestiaire: visual-only theme for the organizer screen. It keeps the existing
-   layout and controls in place; the TV and court screens remain untouched. */
-.app-vestiaire {
-  color: #e8eef8;
-  background: #0d1728 !important;
-}
-
-.app-vestiaire > header {
-  background: linear-gradient(115deg, #15243b 0%, #1a2d49 100%) !important;
-  border-bottom: 1px solid #2c3d58;
-  box-shadow: 0 8px 24px rgb(4 11 24 / 28%);
-}
-
-.app-vestiaire > header .text-xl {
-  color: #f4f7fc;
-  letter-spacing: -0.02em;
-}
-
-.app-vestiaire aside {
-  background: #121f34 !important;
-  border-right: 1px solid #263750;
-}
-
-.app-vestiaire aside nav button {
-  border-radius: 12px;
-}
-
-.app-vestiaire aside nav button.bg-blue-600 {
-  color: #17243a !important;
-  background: linear-gradient(135deg, #ffb45f, #f0953a) !important;
-  box-shadow: 0 5px 14px rgb(240 149 58 / 20%);
-}
-
-.app-vestiaire > div.flex-1,
-.app-vestiaire main.flex-1 {
-  background: linear-gradient(145deg, #101b2e 0%, #111e33 62%, #14223a 100%);
-}
-
-.app-vestiaire [class~="bg-white"],
-.app-vestiaire [class~="bg-gray-50"],
-.app-vestiaire [class~="bg-gray-100"],
-.app-vestiaire [class~="dark:bg-gray-800"],
-.app-vestiaire [class~="dark:bg-gray-700"] {
-  color: #e8eef8 !important;
-  background-color: #192840 !important;
-}
-
-.app-vestiaire [class~="bg-gray-200"],
-.app-vestiaire [class~="dark:bg-gray-600"] {
-  color: #e8eef8 !important;
-  background-color: #263750 !important;
-}
-
-.app-vestiaire [class~="bg-gray-700"] {
-  background-color: #263750 !important;
-}
-
-.app-vestiaire [class~="bg-gray-800"] {
-  background-color: #14223a !important;
-}
-
-.app-vestiaire [class~="bg-gray-900"] {
-  background-color: #101a2b !important;
-}
-
-.app-vestiaire [class~="bg-blue-50"],
-.app-vestiaire [class~="dark:bg-blue-900/20"],
-.app-vestiaire [class~="dark:bg-blue-900/30"] {
-  background-color: #1a304c !important;
-}
-
-.app-vestiaire [class~="bg-green-50"],
-.app-vestiaire [class~="dark:bg-green-900/20"],
-.app-vestiaire [class~="dark:bg-green-900/30"] {
-  background-color: #1d382e !important;
-}
-
-.app-vestiaire [class~="bg-red-50"],
-.app-vestiaire [class~="dark:bg-red-900/20"],
-.app-vestiaire [class~="dark:bg-red-900/30"] {
-  background-color: #3b2632 !important;
-}
-
-.app-vestiaire [class~="bg-amber-50"],
-.app-vestiaire [class~="dark:bg-amber-900/20"] {
-  background-color: #3a3023 !important;
-}
-
-.app-vestiaire [class~="text-gray-900"],
-.app-vestiaire [class~="text-gray-800"],
-.app-vestiaire [class~="text-gray-700"],
-.app-vestiaire [class~="dark:text-gray-100"],
-.app-vestiaire [class~="dark:text-gray-200"] {
-  color: #e8eef8 !important;
-}
-
-.app-vestiaire [class~="text-gray-600"],
-.app-vestiaire [class~="text-gray-500"],
-.app-vestiaire [class~="text-gray-400"],
-.app-vestiaire [class~="dark:text-gray-400"],
-.app-vestiaire [class~="dark:text-gray-300"] {
-  color: #aebbd0 !important;
-}
-
-.app-vestiaire [class~="text-blue-700"],
-.app-vestiaire [class~="text-blue-800"],
-.app-vestiaire [class~="text-blue-900"],
-.app-vestiaire [class~="dark:text-blue-300"] {
-  color: #b8d4ff !important;
-}
-
-.app-vestiaire [class~="text-green-700"],
-.app-vestiaire [class~="text-green-800"],
-.app-vestiaire [class~="text-green-900"],
-.app-vestiaire [class~="dark:text-green-300"] {
-  color: #a9e6bb !important;
-}
-
-.app-vestiaire [class~="text-red-700"],
-.app-vestiaire [class~="text-red-800"],
-.app-vestiaire [class~="text-red-900"],
-.app-vestiaire [class~="dark:text-red-300"] {
-  color: #ffb7bd !important;
-}
-
-.app-vestiaire [class~="text-amber-700"],
-.app-vestiaire [class~="text-amber-800"],
-.app-vestiaire [class~="dark:text-amber-300"] {
-  color: #ffd493 !important;
-}
-
-.app-vestiaire [class~="border-gray-100"],
-.app-vestiaire [class~="border-gray-200"],
-.app-vestiaire [class~="border-gray-300"],
-.app-vestiaire [class~="dark:border-gray-600"],
-.app-vestiaire [class~="dark:border-gray-700"] {
-  border-color: #30415d !important;
-}
-
-.app-vestiaire button {
-  border-radius: 12px;
-  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
-}
-
-.app-vestiaire button.bg-blue-600,
-.app-vestiaire button.bg-blue-500 {
-  color: #17243a !important;
-  background: linear-gradient(135deg, #ffb45f, #f0953a) !important;
-  box-shadow: 0 5px 14px rgb(240 149 58 / 18%);
-}
-
-.app-vestiaire button.bg-green-600,
-.app-vestiaire button.bg-green-500 {
-  background: #31865a !important;
-  box-shadow: 0 4px 12px rgb(49 134 90 / 18%);
-}
-
-.app-vestiaire button.bg-red-600,
-.app-vestiaire button.bg-red-500 {
-  background: #ad4651 !important;
-  box-shadow: 0 4px 12px rgb(173 70 81 / 18%);
-}
-
-.app-vestiaire button.bg-purple-600,
-.app-vestiaire button.bg-purple-500 {
-  background: #566fa0 !important;
-  box-shadow: 0 4px 12px rgb(86 111 160 / 18%);
-}
-
-.app-vestiaire button.bg-gray-500,
-.app-vestiaire button.bg-gray-600,
-.app-vestiaire button.bg-gray-700 {
-  color: #edf3fb !important;
-  background: #293a55 !important;
-}
-
-.app-vestiaire button:not(:disabled):hover {
-  filter: brightness(1.08);
-}
-
-.app-vestiaire button:disabled {
-  cursor: not-allowed;
-  filter: saturate(.55);
-}
-
-.app-vestiaire input:not([type="checkbox"]):not([type="radio"]),
-.app-vestiaire select,
-.app-vestiaire textarea {
-  color: #edf3fb;
-  background-color: #111e33;
-  border-color: #344661;
-  border-radius: 10px;
-}
-
-.app-vestiaire input::placeholder,
-.app-vestiaire textarea::placeholder {
-  color: #91a0b8;
-}
-
-.app-vestiaire [class~="shadow-lg"],
-.app-vestiaire [class~="shadow-xl"],
-.app-vestiaire [class~="shadow-2xl"] {
-  box-shadow: 0 14px 34px rgb(3 9 20 / 30%);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-vestiaire button {
-    transition: none;
-  }
-  .app-vestiaire button:not(:disabled):hover {
-    filter: none;
-  }
-}
-
 /* Custom styles for printing roadmaps */
 @media print {
   .print-no-break {
@@ -248,4 +34,172 @@
     background: white !important;
     color: black !important;
   }
+}
+
+
+/* Bleu électrique : uniquement des couleurs, contours et ombres.
+   Aucun changement de largeur, hauteur, marges, ordre ou position des commandes existantes. */
+.appearance-organizer {
+  color: var(--ui-text);
+  background: var(--ui-bg) !important;
+  color-scheme: light;
+}
+.appearance-organizer[data-color-mode="dark"] { color-scheme: dark; }
+.appearance-organizer > header {
+  color: var(--ui-nav-text);
+  background: linear-gradient(115deg, var(--ui-nav), var(--ui-header)) !important;
+  border-bottom: 1px solid var(--ui-line);
+  box-shadow: 0 4px 18px #04132b26;
+}
+.appearance-organizer aside {
+  color: var(--ui-nav-text);
+  background: linear-gradient(180deg, var(--ui-header), var(--ui-nav)) !important;
+  border-right: 1px solid var(--ui-line);
+}
+.appearance-organizer > div.flex-1,
+.appearance-organizer main.flex-1 { background: var(--ui-bg); }
+.appearance-organizer [class~="bg-white"],
+.appearance-organizer [class~="bg-gray-50"],
+.appearance-organizer [class~="bg-gray-100"],
+.appearance-organizer [class~="dark:bg-gray-800"],
+.appearance-organizer [class~="dark:bg-gray-700"] {
+  color: var(--ui-text) !important;
+  background-color: var(--ui-panel) !important;
+}
+.appearance-organizer [class~="bg-gray-200"],
+.appearance-organizer [class~="bg-gray-700"],
+.appearance-organizer [class~="bg-gray-800"],
+.appearance-organizer [class~="bg-gray-900"],
+.appearance-organizer [class~="dark:bg-gray-600"] {
+  background-color: var(--ui-panel-alt) !important;
+}
+.appearance-organizer [class~="text-gray-900"],
+.appearance-organizer [class~="text-gray-800"],
+.appearance-organizer [class~="text-gray-700"],
+.appearance-organizer [class~="dark:text-white"],
+.appearance-organizer [class~="dark:text-gray-100"],
+.appearance-organizer [class~="dark:text-gray-200"] { color: var(--ui-text) !important; }
+.appearance-organizer [class~="text-gray-600"],
+.appearance-organizer [class~="text-gray-500"],
+.appearance-organizer [class~="text-gray-400"],
+.appearance-organizer [class~="dark:text-gray-300"],
+.appearance-organizer [class~="dark:text-gray-400"] { color: var(--ui-muted) !important; }
+.appearance-organizer [class*="text-blue-"],
+.appearance-organizer [class*="text-indigo-"],
+.appearance-organizer [class*="text-purple-"] { color: var(--ui-accent-ink) !important; }
+.appearance-organizer [class~="bg-blue-50"],
+.appearance-organizer [class~="bg-blue-100"],
+.appearance-organizer [class~="bg-purple-50"],
+.appearance-organizer [class~="bg-indigo-50"],
+.appearance-organizer [class*="dark:bg-blue-900/"] { background-color: var(--ui-accent-soft) !important; }
+.appearance-organizer [class*="border-gray-"],
+.appearance-organizer [class*="dark:border-gray-"] { border-color: var(--ui-line) !important; }
+.appearance-organizer [class*="border-blue-"],
+.appearance-organizer [class*="border-indigo-"] { border-color: var(--ui-accent) !important; }
+.appearance-organizer tr[class~="bg-white"]:nth-child(even),
+.appearance-organizer thead[class~="bg-gray-50"] { background-color: var(--ui-panel-alt) !important; }
+.appearance-organizer button {
+  border-radius: 12px;
+  transition: background-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+.appearance-organizer button[class~="bg-blue-600"],
+.appearance-organizer button[class~="bg-blue-500"],
+.appearance-organizer button[class~="bg-indigo-600"],
+.appearance-organizer button[class~="bg-purple-600"],
+.appearance-organizer button[class~="bg-purple-500"] {
+  color: var(--ui-accent-text) !important;
+  background: var(--ui-accent) !important;
+  box-shadow: 0 3px 10px #061d411a;
+}
+.appearance-organizer button[class~="bg-green-600"],
+.appearance-organizer button[class~="bg-green-500"] { background: #15803d !important; color: #fff !important; }
+.appearance-organizer button[class~="bg-red-600"],
+.appearance-organizer button[class~="bg-red-500"] { background: #c52d3c !important; color: #fff !important; }
+.appearance-organizer button[class~="bg-yellow-500"],
+.appearance-organizer button[class~="bg-orange-500"] { background: #b45309 !important; color: #fff !important; }
+.appearance-organizer button[class~="bg-gray-500"],
+.appearance-organizer button[class~="bg-gray-600"],
+.appearance-organizer button[class~="bg-gray-700"] { background: var(--ui-panel-alt) !important; color: var(--ui-text) !important; }
+.appearance-organizer aside nav button { color: var(--ui-nav-text) !important; }
+.appearance-organizer aside nav button[class~="bg-blue-600"] { color: var(--ui-accent-text) !important; }
+.appearance-organizer aside nav button:not([class~="bg-blue-600"]):hover { background: var(--ui-header) !important; }
+.appearance-organizer > header button[class~="bg-gray-700"] { background: var(--ui-header) !important; color: var(--ui-nav-text) !important; }
+.appearance-organizer button:not(:disabled):hover { filter: brightness(1.06); }
+.appearance-organizer button:disabled { opacity: .55; cursor: not-allowed; }
+.appearance-organizer input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+.appearance-organizer select,
+.appearance-organizer textarea {
+  color: var(--ui-text);
+  background-color: var(--ui-panel);
+  border-color: var(--ui-line);
+  border-radius: 10px;
+}
+.appearance-organizer input::placeholder,
+.appearance-organizer textarea::placeholder { color: var(--ui-muted); }
+.appearance-organizer input[type="checkbox"],
+.appearance-organizer input[type="radio"] { accent-color: var(--ui-accent); }
+.appearance-organizer :is(button, input, select, textarea, summary):focus-visible { outline: 3px solid var(--ui-accent); outline-offset: 3px; }
+.appearance-organizer [class~="shadow-md"],
+.appearance-organizer [class~="shadow-lg"],
+.appearance-organizer [class~="shadow-xl"] { box-shadow: 0 5px 18px #061d4112; }
+/* Les commandes sur fond sombre conservent des libellés clairs. */
+.appearance-organizer > header .text-xl,
+.appearance-organizer > header .font-mono { color: #f5f8ff; }
+
+/* Réglages nouveaux : styles limités à leur propre section et aux aperçus. */
+.appearance-color-picker { width: 48px; height: 36px; padding: 2px; cursor: pointer; border: 1px solid var(--ui-line); border-radius: 8px; }
+.appearance-swatch { width: 32px; height: 32px; border: 2px solid transparent; position: relative; }
+.appearance-swatch[aria-pressed="true"] { outline: 2px solid var(--ui-text); outline-offset: 2px; }
+.appearance-swatch-check { color: #fff; text-shadow: 0 1px 3px #000, 0 0 3px #000; }
+.appearance-preview { background: var(--ui-bg); color: var(--ui-text); border-color: var(--ui-line); }
+.appearance-preview-header { background: var(--ui-nav); color: var(--ui-nav-text); }
+.appearance-preview-panel { background: var(--ui-panel); color: var(--ui-text); }
+.appearance-preview-accent { background: var(--ui-accent); color: var(--ui-accent-text); }
+
+/* TV : cadre 1920 × 1080, dimensionnement et ordre de diffusion inchangés. */
+.appearance-tv { color: var(--ui-text); background: var(--ui-bg) !important; }
+.appearance-tv .tv-canvas { background: radial-gradient(ellipse at top right, var(--ui-panel-alt), var(--ui-bg) 70%) !important; color: var(--ui-text); }
+.appearance-tv [class~="bg-gray-900"],
+.appearance-tv [class~="bg-black"],
+.appearance-tv [class~="bg-[#020617]"] { background-color: var(--ui-bg) !important; }
+.appearance-tv [class~="bg-gray-800"],
+.appearance-tv [class~="bg-gray-950/40"],
+.appearance-tv [class~="bg-gray-800/40"],
+.appearance-tv [class~="bg-slate-800/50"],
+.appearance-tv [class~="bg-black/30"],
+.appearance-tv [class~="bg-black/60"],
+.appearance-tv [class~="bg-white/5"] { background-color: var(--ui-panel) !important; }
+.appearance-tv [class~="bg-slate-900/80"] { background-color: var(--ui-bg) !important; }
+.appearance-tv [class*="bg-blue-"],
+.appearance-tv [class*="bg-purple-"] { background-color: var(--ui-accent-soft) !important; }
+.appearance-tv [class~="text-white"],
+.appearance-tv [class~="text-slate-100"] { color: var(--ui-text) !important; }
+.appearance-tv [class*="text-blue-"],
+.appearance-tv [class*="text-purple-"] { color: var(--ui-accent-ink) !important; }
+.appearance-tv [class~="text-gray-400"],
+.appearance-tv [class~="text-gray-500"],
+.appearance-tv [class~="text-gray-600"],
+.appearance-tv [class~="text-slate-400"],
+.appearance-tv [class~="text-slate-600"] { color: var(--ui-muted) !important; }
+.appearance-tv [class*="border-gray-"],
+.appearance-tv [class*="border-white/"],
+.appearance-tv [class*="border-slate-"] { border-color: var(--ui-line) !important; }
+.appearance-tv [class*="border-blue-"],
+.appearance-tv [class*="border-purple-"] { border-color: var(--ui-accent) !important; }
+.appearance-tv button[class~="bg-blue-600"],
+.appearance-tv .tv-clock { background: var(--ui-accent) !important; color: var(--ui-accent-text) !important; }
+.appearance-tv button[class~="bg-blue-600"] *,
+.appearance-tv .tv-clock [class*="text-blue-"],
+.appearance-tv .tv-clock [class~="text-white"] { color: var(--ui-accent-text) !important; }
+.appearance-tv .tv-prestart { background: var(--ui-bg) !important; }
+/* Conserver les couleurs sportives de victoire/défaite et les images des sponsors. */
+.appearance-tv[data-color-mode="light"] [class~="text-green-400"] { color: #166534 !important; }
+.appearance-tv[data-color-mode="light"] [class~="text-red-400"] { color: #b91c1c !important; }
+@media (prefers-reduced-motion: reduce) {
+  .appearance-organizer button { transition: none; }
+  .appearance-organizer button:not(:disabled):hover { filter: none; }
+}
+@media print {
+  .appearance-settings { display: none !important; }
+  .appearance-organizer { --ui-bg: #fff !important; --ui-panel: #fff !important; --ui-text: #111 !important; --ui-muted: #333 !important; }
 }

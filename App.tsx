@@ -1,3 +1,4 @@
+import { resolveAppearance, themeVariables } from './utils/appearance';
 import OrganizerNotifications from './components/OrganizerNotifications';
 
 import React, { useState, useCallback, useEffect } from 'react';
@@ -30,6 +31,7 @@ const App: React.FC = () => {
   };
   const { state, isPreviewMode } = useTournament();
   const { tournamentName } = state;
+  const appearance = resolveAppearance(state.appearance);
   
   // Gestion du mode TV et Court
   const [isTvMode, setIsTvMode] = useState(false);
@@ -107,7 +109,7 @@ const App: React.FC = () => {
   
   if (isTvMode) {
     return (
-      <div className="relative h-screen w-screen overflow-hidden bg-black">
+      <div className="appearance-tv relative h-screen w-screen overflow-hidden bg-black" data-color-mode={appearance.tv.mode} style={themeVariables(appearance.tv) as React.CSSProperties}>
         {isPreviewMode && (
           <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 bg-amber-500/90 text-amber-950 font-bold px-4 py-1.5 rounded-full text-xs shadow-xl pointer-events-none border border-amber-300/50">
             Mode aperçu : données sur ce navigateur uniquement ; tablettes et TV non synchronisées
@@ -152,7 +154,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="app-vestiaire flex flex-col h-screen bg-gray-100 dark:bg-gray-900 font-sans">
+    <div className="app-vestiaire appearance-organizer flex flex-col h-screen bg-gray-100 dark:bg-gray-900 font-sans" data-color-mode={appearance.organizer.mode} style={themeVariables(appearance.organizer) as React.CSSProperties}>
       {isPreviewMode && (
         <div className="bg-amber-500/95 text-amber-950 font-bold px-4 py-1.5 text-xs sm:text-sm flex items-center justify-center gap-2 text-center shrink-0 z-30 shadow-md border-b border-amber-600/30">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">

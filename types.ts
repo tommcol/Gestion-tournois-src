@@ -109,6 +109,9 @@ export interface CustomSoundConfig {
     oneMinute?: string; // Base64 audio for 1 minute remaining
 }
 
+export interface ScreenAppearance { accent: string; mode: 'light' | 'dark' }
+export interface AppearanceConfig { organizer: ScreenAppearance; tv: ScreenAppearance }
+
 export interface TVConfig {
   showNextMatches: boolean;
   showResults: boolean;
@@ -133,6 +136,7 @@ export interface Track {
 }
 
 export interface TournamentState {
+  appearance?: AppearanceConfig;
   tvMoments?: Partial<Record<TVMoment, TVMomentConfig>>;
   courtConflicts?: CourtConflict[];
   tournamentName: string;
@@ -161,6 +165,7 @@ export interface TournamentState {
 export type TournamentAction =
   | { type: 'SET_STATE'; payload: TournamentState }
   | { type: 'UPDATE_CONFIG'; payload: { 
+      appearance?: AppearanceConfig;
       tournamentName?: string; 
       numberOfCourts?: number; 
       timerDuration?: number; 
