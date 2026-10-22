@@ -132,4 +132,5 @@ const PreviousSessionResults: React.FC<PreviousSessionResultsProps> = ({ matches
     );
 };
 
-export default PreviousSessionResults;
+export default React.memo(PreviousSessionResults);
+

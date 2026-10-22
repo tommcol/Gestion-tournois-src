@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { useTournament } from '../context/TournamentContext';
+import { useTournament, useOfficialClock } from '../context/TournamentContext';
 import { TVMoment, TVMomentConfig } from '../types';
 import { tvMoment, tvSettings } from '../utils/tournamentFlow';
 
 const labels: Record<TVMoment, string> = { welcome: 'Accueil des joueurs', beforeFirst: 'Avant le premier match', playing: 'Matchs en cours', break: 'Entre deux sessions', lastSession: 'Dernière session', poolsOver: 'Fin des poules', finals: 'Phases finales' };
 const fields: [keyof TVMomentConfig, string][] = [['showNextMatches', 'Matchs'], ['showResults', 'Résultats'], ['showStandings', 'Classements'], ['showSponsors', 'Sponsors dans le défilement'], ['showStartSponsor', 'Sponsor au lancement du chrono'], ['showChronoOnTv', 'Chronomètre'], ['showLiveScores', 'Scores des tablettes en direct']];
 export default function TVMomentSettings({ compact = false }: { compact?: boolean }) {
-  const { state, dispatch, clock } = useTournament();
+  const { state, dispatch } = useTournament();
+  const clock = useOfficialClock();
   const [open, setOpen] = useState(!compact);
   const [selected, setSelected] = useState<TVMoment | null>(null);
   const current = tvMoment(state, clock);

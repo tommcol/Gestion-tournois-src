@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useTournament } from '../context/TournamentContext';
+import { useTournament, useOfficialClock } from '../context/TournamentContext';
 import { soundManager } from '../assets/sounds';
 
 const GlobalTimer: React.FC = () => {
-    const { state, emitAudioEvent, dispatch, clock } = useTournament();
+    const { state, emitAudioEvent, dispatch } = useTournament();
+    const clock = useOfficialClock();
     const { timerDuration, soundConfig, isTournamentStarted } = state;
     const passive = new URLSearchParams(window.location.search).get('view')?.startsWith('tv') || new URLSearchParams(window.location.search).get('view') === 'court';
     const [now, setNow] = useState(Date.now());
@@ -18,7 +19,11 @@ const GlobalTimer: React.FC = () => {
     const lastTick = useRef('');
     const endedAt = useRef<number | null>(null);
     useEffect(() => {
-        const interval = setInterval(() => {
+        let timer: ReturnType<typeof setTimeout>;
+        const run = () => {
+            const end = latest.current.current?.endsAt;
+            const delay = end ? Math.max(30, Math.min(1000, ((end - Date.now()) % 1000 + 1000) % 1000 || 1000)) : 1000;
+            timer = setTimeout(run, delay);
             const wallTime = Date.now(); setNow(wallTime);
             if (passive) return;
             const { current: c, state: st, emitAudioEvent: emit } = latest.current;
@@ -45,9 +50,24 @@ const GlobalTimer: React.FC = () => {
             if (seconds === 10) { soundManager.playAirHorn(st.soundConfig?.end); emit({ type: 'airhorn', payload: st.soundConfig?.end }); }
             else if (seconds === 60) { soundManager.playOneMinute(st.soundConfig?.oneMinute); emit({ type: 'oneMinute', payload: st.soundConfig?.oneMinute }); }
             else if (seconds % 60 === 0 && seconds !== st.timerDuration) { soundManager.playBeep(880, 0.1, 'sine', true); emit({ type: 'beep' }); }
-        }, 100);
-        return () => clearInterval(interval);
+        };
+        run();
+        const visible = () => { clearTimeout(timer); run(); };
+        document.addEventListener('visibilitychange', visible);
+        return () => { clearTimeout(timer); document.removeEventListener('visibilitychange', visible); };
     }, []);
+    useEffect(() => {
+        if (!passive) return;
+        const remoteSound = (event: Event) => {
+            const { type, payload } = (event as CustomEvent).detail;
+            if (type === 'whistle') void soundManager.playWhistle(payload);
+            else if (type === 'airhorn') void soundManager.playAirHorn(payload);
+            else if (type === 'oneMinute') void soundManager.playOneMinute(payload);
+            else if (type === 'beep') void soundManager.playBeep(880, .1, 'sine', true);
+        };
+        window.addEventListener('tournament_audio_event', remoteSound);
+        return () => window.removeEventListener('tournament_audio_event', remoteSound);
+    }, [passive]);
     const handleStartPause = async () => {
         if (!isTournamentStarted) {
             if (!window.confirm('Le tournoi n’est pas encore démarré. Démarrer maintenant ?')) return;

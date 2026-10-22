@@ -1,6 +1,6 @@
 import { ClockSnapshot } from '../utils/tournamentFlow';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useTournamentContext } from '../context/TournamentContext';
+import { useTournamentContext, useOfficialClock } from '../context/TournamentContext';
 import { CourtSubmission } from '../types';
 import { generateId } from '../utils/id';
 
@@ -11,7 +11,8 @@ interface Draft extends CourtSubmission {
 }
 
 const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
-  const { state, socket, clock } = useTournamentContext();
+  const { state, socket } = useTournamentContext();
+  const clock = useOfficialClock();
   const key = `src-court-draft-v1-${courtNumber}`;
   const [draft, setDraft] = useState<Draft | null>(() => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } });
   const draftRef = useRef(draft);
@@ -81,7 +82,7 @@ const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
     }
     if (['timer_start', 'timer_tick'].includes(clock.type) && !current.overtime) {
       const remaining = clock.endsAt ? Math.max(0, Math.ceil((clock.endsAt - Date.now()) / 1000)) : clock.payload?.timeLeft ?? current.remaining;
-      save({ ...current, phase: 'playing', remaining, running: true, endsAt: clock.endsAt });
+      if (!current.running || current.endsAt !== clock.endsAt || current.phase !== 'playing') save({ ...current, phase: 'playing', remaining, running: true, endsAt: clock.endsAt });
     } else if (clock.type === 'timer_pause' || clock.type === 'timer_reset') {
       save({ ...current, running: false, endsAt: undefined, remaining: clock.type === 'timer_reset' ? state.timerDuration : clock.payload?.timeLeft ?? current.remaining });
     }
@@ -94,7 +95,7 @@ const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
       if (current.running && current.endsAt) {
         const remaining = Math.max(0, Math.ceil((current.endsAt - Date.now()) / 1000));
         if (!remaining) submit(true);
-        else if (remaining !== current.remaining) save({ ...current, remaining });
+        else if (remaining !== current.remaining) { const next = { ...current, remaining }; draftRef.current = next; setDraft(next); }
       }
       if (['pending', 'conflict'].includes(current.phase) && socket?.connected) {
         if (current.phase === 'conflict') save({ ...current, phase: 'pending' });

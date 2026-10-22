@@ -14,4 +14,5 @@ const SponsorDisplay: React.FC<SponsorDisplayProps> = ({ sponsor }) => {
     );
 };
 
-export default SponsorDisplay;
+export default React.memo(SponsorDisplay);
+

@@ -1,7 +1,7 @@
 import { tvMoment, tvSettings, tvSessions } from '../utils/tournamentFlow';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { useTournament } from '../context/TournamentContext';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useTournament, useOfficialClock } from '../context/TournamentContext';
 import { soundManager } from '../assets/sounds';
 import NextSessionMatches from './NextSessionMatches';
 import PreviousSessionResults from './PreviousSessionResults';
@@ -24,10 +24,12 @@ interface TVDisplayProps {
 }
 
 const TVDisplay: React.FC = () => {
-    const { state, isLoaded, socket, clock } = useTournament();
+    const { state, isLoaded, socket } = useTournament();
+    const clock = useOfficialClock();
     const { matches, finalMatches, isPoolStageFinished, isFinalPhase, isTournamentStarted, sponsors, currentSession, teams, categories, pools, matchDisplayDuration, sponsorDisplayDuration } = state;
     const moment = tvMoment(state, clock);
     const tvConfig = tvSettings(state, moment);
+    const sessions = tvSessions(state, clock);
 
     const allFinalMatches = useMemo(() => {
         return Object.values(finalMatches).flat();
@@ -82,6 +84,17 @@ const TVDisplay: React.FC = () => {
         setIsPreStarting(clock.type === 'prestart_begin');
         setPauseTimeLeft(clock.type === 'timer_end' && clock.breakEndsAt ? Math.max(0, Math.ceil((clock.breakEndsAt - Date.now()) / 1000)) : null);
     }, [clock, currentSession, isFinalPhase]);
+
+    useEffect(() => {
+        if (clock?.type === 'prestart_begin' && sponsors.length) setPreStartSponsorIndex(Math.floor(Math.random() * sponsors.length));
+        if (clock?.type === 'timer_end') setLiveScores([]);
+    }, [clock?.type, clock?.endsAt]);
+    useEffect(() => {
+        const next = sponsors[(sponsorIndex + 1) % sponsors.length];
+        if (!next) return;
+        const image = new Image(); image.src = next.logo;
+        void image.decode?.().catch(() => {});
+    }, [sponsors, sponsorIndex]);
 
     const formatPause = (sec: number) => {
         const m = Math.floor(sec / 60);
@@ -164,9 +177,9 @@ const TVDisplay: React.FC = () => {
         if (isFinalPhase) return []; // Le tableau utilise ses propres données (allFinalMatches)
         if (isPoolStageFinished) return [];
 
-        const targetSession = tvSessions(state, clock).next;
+        const targetSession = sessions.next;
         return matches.filter(m => m.sessionNumber === targetSession);
-    }, [matches, isFinalPhase, isPoolStageFinished, currentSession, clock]);
+    }, [matches, isFinalPhase, isPoolStageFinished, sessions.next]);
 
     const maxSession = useMemo(() => {
         const allMatches = isFinalPhase
@@ -178,14 +191,14 @@ const TVDisplay: React.FC = () => {
     const resultsData = useMemo(() => {
         if (isFinalPhase) return { matches: [], sessionNumber: 0 };
 
-        const targetSession = tvSessions(state, clock).results;
+        const targetSession = sessions.results;
 
         if (targetSession <= 0) return { matches: [], sessionNumber: 0 };
         return {
             matches: matches.filter(m => m.sessionNumber === targetSession),
             sessionNumber: targetSession
         };
-    }, [matches, isFinalPhase, isPoolStageFinished, currentSession, clock]);
+    }, [matches, isFinalPhase, isPoolStageFinished, sessions.results]);
 
     const isLastPoolSession = useMemo(() => {
         if (isPoolStageFinished || isFinalPhase) return false;
@@ -330,7 +343,7 @@ const TVDisplay: React.FC = () => {
         }
     }, [currentSession]);
 
-    const getTeam = (teamId: string) => teams.find(t => t.id === teamId);
+    const getTeam = useCallback((teamId: string) => teams.find(t => t.id === teamId), [teams]);
 
     const showReferee = true;
     const showScorer = true;

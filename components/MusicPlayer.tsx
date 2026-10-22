@@ -1,330 +1,57 @@
-
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect, useSyncExternalStore, useRef } from 'react';
 import { soundManager } from '../assets/sounds';
 import { useTournament } from '../context/TournamentContext';
-
-interface Track {
-    name: string;
-    url: string;
-}
+import { getMusicController } from '../services/musicRuntime';
+import { Track } from '../services/MusicController';
 
 const MusicPlayer: React.FC = () => {
-    const { state, dispatch, emitMusicCommand } = useTournament();
-    const playlist = state.playlist || [];
+    const { state, dispatch } = useTournament();
+    const playlist = state.playlist;
     const isTvMode = window.location.search.includes('view=tv');
-
-    const safeEmitMusicCommand = (cmd: any) => {
-        if (!isTvMode) emitMusicCommand(cmd);
-    };
-
-    const audioRef = useRef<HTMLAudioElement>(null);
-    const [currentIndex, setCurrentIndex] = useState<number>(() => {
-        const saved = sessionStorage.getItem('music_current_index');
-        return saved ? parseInt(saved, 10) : 0;
-    });
-    const [isPlaying, setIsPlaying] = useState(() => {
-        return sessionStorage.getItem('music_was_playing') === 'true';
-    });
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [isShuffle, setIsShuffle] = useState(false);
-    const [volume, setVolume] = useState(0.5);
-    const [prevVolume, setPrevVolume] = useState(0.5);
+    const [controller] = useState(getMusicController);
+    const { currentIndex, currentTime, isPlaying, isShuffle, volume, isLoading } = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
     const [showPlaylist, setShowPlaylist] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
-    const [currentTime, setCurrentTime] = useState(0);
-
     const [isMuted, setIsMuted] = useState(soundManager.getMuteState());
-
+    const autoPlayFirst = useRef(false);
     useEffect(() => {
-        sessionStorage.setItem('music_current_index', currentIndex.toString());
-    }, [currentIndex]);
-
+        controller.setPlaylist(playlist || []); controller.publish();
+        if (autoPlayFirst.current && playlist.length) { autoPlayFirst.current = false; controller.select(0); }
+    }, [controller, playlist]);
     useEffect(() => {
-        sessionStorage.setItem('music_was_playing', isPlaying.toString());
-    }, [isPlaying]);
-
-    useEffect(() => {
-        if (!isPlaying) return;
-        const interval = setInterval(() => {
-            if (audioRef.current) {
-                sessionStorage.setItem('music_current_time', audioRef.current.currentTime.toString());
-            }
-        }, 3000);
-        return () => clearInterval(interval);
-    }, [isPlaying]);
-
-    // Initial setup
-    useEffect(() => {
-        if (audioRef.current) {
-            soundManager.connectMusicElement(audioRef.current);
-            soundManager.setMusicVolume(volume);
-        }
-        
-        // Sync local state with SoundManager
-        setIsMuted(soundManager.getMuteState());
-
-        // Auto-clean playlist URLs if they contain localhost (legacy issue)
-        const needsCleaning = playlist.some(t => t.url.includes('localhost') || t.url.includes('127.0.0.1'));
-        if (needsCleaning && !isTvMode) {
-            const cleaned = playlist.map(t => {
-                if (t.url.includes('localhost') || t.url.includes('127.0.0.1')) {
-                    const parts = t.url.split('/uploads/');
-                    return { ...t, url: parts.length > 1 ? '/uploads/' + parts[1] : t.url };
-                }
-                return t;
-            });
-            dispatch({ type: 'UPDATE_PLAYLIST', payload: cleaned });
-            safeEmitMusicCommand({ command: 'playlist_update', payload: { playlist: cleaned } });
-        }
-
-        const handleUnlock = () => {
-            if (audioRef.current) {
-                audioRef.current.play().then(() => {
-                    if (isTvMode && playlist.length > 0) {
-                        setIsPlaying(true);
-                    } else {
-                        audioRef.current?.pause();
-                    }
-                }).catch(e => console.warn("Unlock failed", e));
-            }
-            soundManager.ensureContextState().catch(e => console.warn("Unlock context failed", e));
-        };
-
-        const handleRemoteMusic = async (e: any) => {
-            const { command, payload } = e.detail;
-            if (command === 'play') {
-                setIsPlaying(true);
-                audioRef.current?.play().catch(e => console.warn("Remote play failed", e));
-            } else if (command === 'pause') {
-                setIsPlaying(false);
-                audioRef.current?.pause();
-            } else if (command === 'track_change') {
-                setCurrentIndex(payload.index);
-                setIsPlaying(true);
-            } else if (command === 'playlist_update') {
-                dispatch({ type: 'UPDATE_PLAYLIST', payload: payload.playlist });
-            } else if (command === 'seek') {
-                if (audioRef.current) {
-                    const diff = Math.abs(audioRef.current.currentTime - payload.time);
-                    if (diff > 2) { // Only sync if drift is > 2s
-                        audioRef.current.currentTime = payload.time;
-                    }
-                }
-            }
-        };
-
-        window.addEventListener('tournament_music_sync', handleRemoteMusic);
-        window.addEventListener('unlock_music_player', handleUnlock);
-        
-        return () => {
-            window.removeEventListener('tournament_music_sync', handleRemoteMusic);
-            window.removeEventListener('unlock_music_player', handleUnlock);
-        };
-    }, [playlist, currentIndex, volume, dispatch, isTvMode]);
-
-    // Load track when index changes
-    useEffect(() => {
-        if (playlist.length > 0 && audioRef.current) {
-            const track = playlist[currentIndex];
-            let url = track.url;
-            
-            // Si l'URL est absolue et contient localhost, on la rend relative pour la TV
-            if (url.includes('localhost') || url.includes('127.0.0.1')) {
-                const parts = url.split('/uploads/');
-                if (parts.length > 1) {
-                    url = '/uploads/' + parts[1];
-                }
-            }
-            
-            // Toujours s'assurer que l'URL est relative au domaine actuel
-            if (url.startsWith('/')) {
-                url = `${window.location.origin}${url}`;
-            }
-            
-            audioRef.current.src = url;
-            audioRef.current.load();
-            
-            // Restaurer la position sauvegardée si c'est le même morceau
-            const savedTime = sessionStorage.getItem('music_current_time');
-            if (savedTime) {
-                const time = parseFloat(savedTime);
-                audioRef.current.addEventListener('loadedmetadata', function onLoaded() {
-                    if (audioRef.current && time < audioRef.current.duration) {
-                        audioRef.current.currentTime = time;
-                    }
-                    audioRef.current?.removeEventListener('loadedmetadata', onLoaded);
-                }, { once: true });
-                // Effacer après restauration pour ne pas re-seek sur un changement de morceau volontaire
-                sessionStorage.removeItem('music_current_time');
-            }
-            
-            // Si la musique était en lecture avant le re-render, reprendre
-            if (isPlaying) {
-                audioRef.current.play().catch(e => console.warn('Auto-resume failed:', e));
-            }
-        }
-    }, [currentIndex, playlist]);
-
-    // Periodic seek sync and local time update
-    useEffect(() => {
-        const interval = setInterval(() => {
-            if (isPlaying && audioRef.current) {
-                const time = audioRef.current.currentTime;
-                setCurrentTime(time);
-                
-                if (!isTvMode && playlist.length > 0) {
-                    safeEmitMusicCommand({ command: 'seek', payload: { time } });
-                }
-            }
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [isPlaying, playlist, isTvMode]);
-
+        const clean = (playlist || []).map(track => {
+            if (/localhost|127\.0\.0\.1/.test(track.url) && track.url.includes('/uploads/')) return { ...track, url: '/uploads/' + track.url.split('/uploads/')[1] };
+            return track;
+        });
+        if (!isTvMode && clean.some((track, i) => track !== playlist[i])) dispatch({ type: 'UPDATE_PLAYLIST', payload: clean });
+    }, [playlist, isTvMode, dispatch]);
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (files && files.length > 0) {
-            setIsUploading(true);
-            const newTracks: Track[] = [];
-            
-            for (const file of Array.from(files)) {
-                try {
-                    const response = await fetch('/api/upload', {
-                        method: 'POST',
-                        headers: {
-                            'x-file-name': encodeURIComponent(file.name),
-                            'Content-Type': file.type
-                        },
-                        body: await file.arrayBuffer()
-                    });
-                    
-                    if (!response.ok) throw new Error('Upload failed');
-                    
-                    const data = await response.json();
-                    // Store relative URL so it works on any device (PC or TV)
-                    newTracks.push({ name: file.name, url: data.url });
-                } catch (err) {
-                    console.error('Upload failed for', file.name, err);
-                    window.alert(`La musique « ${file.name} » n’a pas été ajoutée. Vérifie la connexion au PC. L’ajout de musique n’est pas disponible dans l’aperçu Cloudflare.`);
-                }
-            }
-
-            if (newTracks.length > 0) {
-                const updatedPlaylist = [...playlist, ...newTracks];
-                dispatch({ type: 'UPDATE_PLAYLIST', payload: updatedPlaylist });
-                safeEmitMusicCommand({ command: 'playlist_update', payload: { playlist: updatedPlaylist } });
-                
-                if (playlist.length === 0) {
-                    setCurrentIndex(0);
-                    setIsPlaying(true);
-                    safeEmitMusicCommand({ command: 'track_change', payload: { index: 0 } });
-                }
-            }
-            setIsUploading(false);
+        const files = e.target.files; if (!files?.length) return;
+        setIsUploading(true);
+        const tracks: Track[] = [];
+        for (const file of Array.from(files)) {
+            try {
+                const response = await fetch('/api/upload', { method: 'POST', headers: { 'x-file-name': encodeURIComponent(file.name), 'Content-Type': file.type }, body: await file.arrayBuffer() });
+                if (!response.ok) throw new Error('Upload failed');
+                const data = await response.json(); tracks.push({ name: file.name, url: data.url });
+            } catch { window.alert(`La musique « ${file.name} » n’a pas été ajoutée. Vérifie la connexion au PC. L’ajout de musique n’est pas disponible dans l’aperçu Cloudflare.`); }
         }
+        if (tracks.length) { if (!playlist.length) autoPlayFirst.current = true; dispatch({ type: 'UPDATE_PLAYLIST', payload: [...playlist, ...tracks] }); }
+        setIsUploading(false); e.target.value = '';
     };
-
-    const togglePlay = async () => {
-        if (!audioRef.current || playlist.length === 0) return;
-
-        await soundManager.ensureContextState();
-
-        if (isPlaying) {
-            audioRef.current.pause();
-            safeEmitMusicCommand({ command: 'pause' });
-        } else {
-            audioRef.current.play();
-            safeEmitMusicCommand({ command: 'play' });
-        }
-        setIsPlaying(!isPlaying);
-    };
-    
-    const toggleShuffle = () => {
-        setIsShuffle(!isShuffle);
-    };
-    
-    const playTrack = (index: number) => {
-        setCurrentIndex(index);
-        setIsPlaying(true);
-        setShowPlaylist(false);
-        safeEmitMusicCommand({ command: 'track_change', payload: { index } });
-    };
-
-    const removeTrack = (e: React.MouseEvent, index: number) => {
-        e.stopPropagation();
-        const updatedPlaylist = playlist.filter((_, i) => i !== index);
-        dispatch({ type: 'UPDATE_PLAYLIST', payload: updatedPlaylist });
-        safeEmitMusicCommand({ command: 'playlist_update', payload: { playlist: updatedPlaylist } });
-        
-        if (currentIndex === index) {
-            if (updatedPlaylist.length === 0) {
-                setIsPlaying(false);
-            } else {
-                const nextIndex = index % updatedPlaylist.length;
-                setCurrentIndex(nextIndex);
-                safeEmitMusicCommand({ command: 'track_change', payload: { index: nextIndex } });
-            }
-        } else if (currentIndex > index) {
-            setCurrentIndex(prev => prev - 1);
-        }
-    };
-    
-    const playNext = () => {
-        if (playlist.length === 0) return;
-        
-        let nextIndex;
-        if (isShuffle && playlist.length > 1) {
-            nextIndex = Math.floor(Math.random() * playlist.length);
-            let attempts = 0;
-            while (nextIndex === currentIndex && attempts < 3) {
-                nextIndex = Math.floor(Math.random() * playlist.length);
-                attempts++;
-            }
-        } else {
-            nextIndex = (currentIndex + 1) % playlist.length;
-        }
-        
-        setCurrentIndex(nextIndex);
-        emitMusicCommand({ command: 'track_change', payload: { index: nextIndex } });
-    };
-
-    const playPrev = () => {
-        if (playlist.length === 0) return;
-        const prevIndex = (currentIndex - 1 + playlist.length) % playlist.length;
-        setCurrentIndex(prevIndex);
-        emitMusicCommand({ command: 'track_change', payload: { index: prevIndex } });
-    };
-
-    const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newVolume = parseFloat(e.target.value);
-        setVolume(newVolume);
-        soundManager.setMusicVolume(newVolume);
-    };
-
-    const toggleMute = () => {
-        const newState = soundManager.toggleMute();
-        setIsMuted(newState);
-    };
-    
-    const handleTrackEnded = () => {
-        playNext();
-    };
-
-    const currentTrackName = playlist[currentIndex]?.name || "";
-
-    const formatTime = (time: number) => {
-        const mins = Math.floor(time / 60);
-        const secs = Math.floor(time % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
+    const togglePlay = async () => { await soundManager.ensureContextState(); if (isPlaying) controller.pause(); else await controller.play(); };
+    const toggleShuffle = () => controller.toggleShuffle();
+    const playTrack = (index: number) => { void soundManager.ensureContextState(); controller.select(index); setShowPlaylist(false); };
+    const removeTrack = (e: React.MouseEvent, index: number) => { e.stopPropagation(); dispatch({ type: 'UPDATE_PLAYLIST', payload: playlist.filter((_, i) => i !== index) }); };
+    const playNext = () => controller.next();
+    const playPrev = () => controller.previous();
+    const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => controller.setVolume(parseFloat(e.target.value));
+    const toggleMute = () => setIsMuted(soundManager.toggleMute());
+    const currentTrackName = playlist[currentIndex]?.name || '';
+    const formatTime = (time: number) => `${Math.floor(time / 60)}:${String(Math.floor(time % 60)).padStart(2, '0')}`;
 
     return (
         <div className="relative z-30"> 
-            <audio 
-                ref={audioRef} 
-                onEnded={() => !isTvMode && playNext()}
-            />
             <div className="flex items-center bg-gray-800 dark:bg-gray-700 p-1 rounded-md border border-gray-700 dark:border-gray-600 h-10">
                 
                 <div className="relative overflow-hidden flex-shrink-0 mx-1">

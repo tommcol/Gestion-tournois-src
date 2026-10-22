@@ -1,289 +1,164 @@
-import { ClockSnapshot } from '../utils/tournamentFlow';
-
-import React, { createContext, useReducer, useContext, useEffect, ReactNode, useRef, useState } from 'react';
-import { TournamentState, TournamentAction, Team, FinalMatch } from '../types';
-import { initialData } from '../data/initialData';
-import { generatePools, generateMatchesForPools } from '../utils/poolLogic';
-import { updateWinnerInFinals, generateAutoPairings, createEmptyPairings } from '../utils/finalPhaseLogic';
-import { generateSchedule } from '../utils/scheduleLogic';
-import { calculateAllStandings } from '../utils/standingsLogic';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { saveTournamentState as saveToIndexedDB, loadTournamentState as loadFromIndexedDB } from '../utils/db';
-
-import { configReducer } from './reducers/configReducer';
-import { categoryReducer } from './reducers/categoryReducer';
-import { teamReducer } from './reducers/teamReducer';
-import { poolMatchReducer } from './reducers/poolMatchReducer';
-import { finalPhaseReducer } from './reducers/finalPhaseReducer';
-import { sponsorReducer } from './reducers/sponsorReducer';
-import { sessionReducer } from './reducers/sessionReducer';
+import { TournamentState, TournamentAction } from '../types';
+import { initialData } from '../data/initialData';
+import { tournamentReducer } from './tournamentReducer';
 import { globalReducer } from './reducers/globalReducer';
+import { saveTournamentState, loadTournamentState } from '../utils/db';
+import { applyStatePatch, shareUnchanged, StatePatch } from '../utils/statePatch';
+import { createCoalescedSave } from '../utils/coalescedSave';
+import { ClockSnapshot } from '../utils/tournamentFlow';
+import { generateId } from '../utils/id';
+import { receiveMusicCommand, setMusicSender } from '../services/musicChannel';
 
-const STORAGE_KEY = 'tournament_preview_state';
-
-const loadLocalOrInitialData = async (): Promise<TournamentState> => {
-    try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === 'object') {
-                return parsed;
-            }
-        }
-    } catch (e) {
-        console.warn('LocalStorage read error:', e);
-    }
-
-    try {
-        const fromIdb = await loadFromIndexedDB();
-        if (fromIdb) return fromIdb;
-    } catch (e) {
-        console.warn('IndexedDB read error:', e);
-    }
-
-    return initialData;
-};
-
-const initialState: TournamentState = initialData;
-
-const tournamentReducer = (state: TournamentState, action: TournamentAction): TournamentState => {
-  // Try each sub-reducer. If a sub-reducer handles the action, it returns a new state.
-  // Otherwise, it returns the original state.
-  
-  let newState = globalReducer(state, action);
-  if (newState !== state) return newState;
-
-  newState = configReducer(state, action);
-  if (newState !== state) return newState;
-
-  newState = categoryReducer(state, action);
-  if (newState !== state) return newState;
-
-  newState = teamReducer(state, action);
-  if (newState !== state) return newState;
-
-  newState = poolMatchReducer(state, action);
-  if (newState !== state) return newState;
-
-  newState = finalPhaseReducer(state, action);
-  if (newState !== state) return newState;
-
-  newState = sponsorReducer(state, action);
-  if (newState !== state) return newState;
-
-  newState = sessionReducer(state, action);
-  if (newState !== state) return newState;
-
-  return state;
-};
-
-const TournamentContext = createContext<{ 
-  clock: ClockSnapshot | null;
-  state: TournamentState; 
-  dispatch: React.Dispatch<TournamentAction>;
-  emitAudioEvent: (data: any) => void;
-  emitMusicCommand: (data: any) => void;
-  isLoaded: boolean;
-  isPreviewMode: boolean;
-  socket: Socket | null;
+const LEGACY_KEY = 'tournament_preview_state';
+const QUEUE_KEY = 'tournament_pending_actions_v2';
+const SERVER_KEY = 'tournament_local_server_seen';
+interface Pending { id: string; action: TournamentAction }
+async function loadLocal(): Promise<TournamentState> {
+  try { const saved = await loadTournamentState(); if (saved) return saved; } catch {}
+  try { const raw = localStorage.getItem(LEGACY_KEY); if (raw) return JSON.parse(raw); } catch {}
+  return initialData;
+}
+const critical = (action: TournamentAction) => ['UPDATE_MATCH_SCORE', 'UPDATE_FINAL_MATCH_SCORE', 'SET_STATE', 'NEXT_SESSION', 'PREVIOUS_SESSION', 'CLEAR_DATA', 'RESET_TOURNAMENT'].includes(action.type);
+const ClockContext = createContext<ClockSnapshot | null>(null);
+const TournamentContext = createContext<{
+  state: TournamentState; dispatch: React.Dispatch<TournamentAction>;
+  emitAudioEvent: (data: any) => void; emitMusicCommand: (data: any) => void;
+  isLoaded: boolean; isPreviewMode: boolean; socket: Socket | null;
 } | undefined>(undefined);
 
 export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [state, setState] = useState(initialData);
+  const stateRef = useRef(state);
   const [clock, setClock] = useState<ClockSnapshot | null>(null);
   const clockRef = useRef<ClockSnapshot | null>(null);
-  const remoteView = new URLSearchParams(window.location.search).get('view');
-  const isRemote = remoteView === 'court' || remoteView === 'tv' || remoteView === 'tv_sponsors';
-  const [state, dispatch] = useReducer(tournamentReducer, initialState);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const socketRef = useRef<Socket | null>(null);
-  const lastReceivedStateRef = useRef<string>('');
-  const isUpdatingFromSocket = useRef<boolean>(false);
+  const serverReady = useRef(false);
+  const hadServer = useRef(false);
+  const revision = useRef(0);
+  const queue = useRef<Pending[]>([]);
+  const inFlight = useRef(new Set<string>());
+  const flushQueue = useRef<() => void>(() => {});
+  const remoteView = new URLSearchParams(window.location.search).get('view');
+  const isRemote = remoteView === 'court' || !!remoteView?.startsWith('tv');
+  const saveRef = useRef(createCoalescedSave<TournamentState>(async value => {
+    try { await saveTournamentState(value); }
+    catch { localStorage.setItem(LEGACY_KEY, JSON.stringify(value)); }
+  }, 300));
+  const commit = useCallback((next: TournamentState, immediate = false) => {
+    if (next === stateRef.current) return;
+    stateRef.current = next; setState(next);
+    if (!isRemote) void saveRef.current.save(next, immediate).catch(error => console.error('Copie locale non enregistrée:', error));
+  }, [isRemote]);
+  const persistQueue = useCallback(() => {
+    try { localStorage.setItem(QUEUE_KEY, JSON.stringify(queue.current)); }
+    catch (error) { console.error('Commandes en attente non copiées:', error); }
+  }, []);
+  const dispatch = useCallback((action: TournamentAction) => {
+    if (isRemote) return;
+    if (hadServer.current || socketRef.current?.connected) {
+      queue.current.push({ id: generateId(), action }); persistQueue(); flushQueue.current();
+    } else commit(tournamentReducer(stateRef.current, action), critical(action));
+  }, [isRemote, commit, persistQueue]);
 
-  // Initialize Socket.io and Preview Mode fallback
   useEffect(() => {
-    let hasLoaded = false;
-    let fallbackTimer: any = null;
-
-    // Si aucun serveur n'est joignable sous 1.2s, on démarre en Mode Aperçu
-    fallbackTimer = setTimeout(async () => {
-      if (!hasLoaded) {
-        console.warn('Mode aperçu activé : serveur non joignable');
-        const localData = await loadLocalOrInitialData();
-        hasLoaded = true;
-        dispatch({ type: 'SET_STATE', payload: localData });
-        setIsPreviewMode(true);
-        setIsLoaded(true);
-      }
-    }, 1200);
-
-    const socket = io({
-      timeout: 3000,
-      reconnectionAttempts: Infinity,
-      auth: { role: isRemote ? remoteView : 'admin' },
-    });
-    socketRef.current = socket;
-
-    socket.on('connect_error', async (err) => {
-      console.warn('Serveur non joignable (connect_error):', err.message);
-      if (!hasLoaded) {
-        if (fallbackTimer) clearTimeout(fallbackTimer);
-        const localData = await loadLocalOrInitialData();
-        hasLoaded = true;
-        dispatch({ type: 'SET_STATE', payload: localData });
-        setIsPreviewMode(true);
-        setIsLoaded(true);
-      }
-    });
-
-    socket.on('connect', () => {
-      console.log('Connecté au serveur du PC (réseau local)');
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-      setIsPreviewMode(false);
-
-      if (isRemote) return;
-      setTimeout(async () => {
-        setIsLoaded(prev => {
-          if (!prev) {
-            hasLoaded = true;
-            loadFromIndexedDB().then(savedState => {
-              if (savedState) {
-                console.log('Récupération depuis IndexedDB après crash');
-                dispatch({ type: 'SET_STATE', payload: savedState });
-                socket.emit('update_state', savedState);
-              } else {
-                console.log('Aucune donnée locale, démarrage à vide');
-                socket.emit('update_state', state);
-              }
-            }).catch(() => {
-              socket.emit('update_state', state);
-            });
-            return true;
-          }
-          return prev;
-        });
-      }, 2000);
-    });
-
-    socket.on('state_update', (newState: TournamentState) => {
-      hasLoaded = true;
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-      setIsPreviewMode(false);
-      const stateString = JSON.stringify(newState);
-      if (stateString !== lastReceivedStateRef.current) {
-        lastReceivedStateRef.current = stateString;
-        isUpdatingFromSocket.current = true;
-        dispatch({ type: 'SET_STATE', payload: newState });
-        setIsLoaded(true);
-        setTimeout(() => {
-          isUpdatingFromSocket.current = false;
-        }, 100);
-      }
-    });
-
-    const receiveClock = (data: ClockSnapshot) => {
-      clockRef.current = data; setClock(data);
-      window.dispatchEvent(new CustomEvent('tournament_clock_sync', { detail: data }));
+    let disposed = false, loaded = false;
+    try { hadServer.current = localStorage.getItem(SERVER_KEY) === 'true'; queue.current = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch {}
+    const fallback = async () => {
+      if (loaded || disposed) return;
+      const saved = await loadLocal(); if (loaded || disposed) return;
+      loaded = true; commit(globalReducer(stateRef.current, { type: 'SET_STATE', payload: saved }));
+      setIsLoaded(true); setIsPreviewMode(true);
     };
-    socket.on('timer_sync', receiveClock);
-    socket.on('audio_event', (data) => {
+    const fallbackTimer = setTimeout(fallback, 1200);
+    const connection = io({ timeout: 3000, reconnectionAttempts: Infinity, auth: { role: isRemote ? remoteView : 'admin', protocol: 2 } });
+    socketRef.current = connection; setSocket(connection);
+    const sendPending = () => {
+      if (!connection.connected || !serverReady.current) return;
+      for (const item of queue.current.slice(0, 32)) {
+        if (inFlight.current.has(item.id)) continue;
+        inFlight.current.add(item.id);
+        connection.timeout(8000).emit('tournament_action', item, (error: unknown, reply: { status: string; error?: string }) => {
+          inFlight.current.delete(item.id);
+          if (disposed || error) return;
+          if (reply?.status === 'received' || reply?.status === 'rejected') {
+            queue.current = queue.current.filter(p => p.id !== item.id); persistQueue();
+            if (reply.status === 'rejected') window.alert(reply.error || 'Le PC n’a pas accepté cette modification.');
+            sendPending();
+          }
+        });
+      }
+    };
+    flushQueue.current = sendPending;
+    const retry = setInterval(sendPending, 2000);
+    connection.on('connect', () => { clearTimeout(fallbackTimer); serverReady.current = false; inFlight.current.clear(); window.dispatchEvent(new Event('tournament_music_connected')); });
+    connection.on('disconnect', () => { serverReady.current = false; inFlight.current.clear(); setIsPreviewMode(true); });
+    connection.on('connect_error', fallback);
+    connection.on('server_empty', async () => {
+      if (disposed) return;
+      if (isRemote) { loaded = true; setIsLoaded(true); setIsPreviewMode(false); return; }
+      const saved = await loadLocal();
+      if (!disposed) connection.emit('initialize_state', saved);
+    });
+    connection.on('state_update', (incoming: TournamentState, metadata?: { revision?: number }) => {
+      if (disposed) return;
+      loaded = true; clearTimeout(fallbackTimer); serverReady.current = true; hadServer.current = true;
+      try { localStorage.setItem(SERVER_KEY, 'true'); } catch {}
+      revision.current = metadata?.revision ?? 0;
+      const normalized = globalReducer(stateRef.current, { type: 'SET_STATE', payload: incoming });
+      commit(shareUnchanged(stateRef.current, normalized));
+      setIsLoaded(true); setIsPreviewMode(false); sendPending();
+    });
+    connection.on('state_patch', (message: { baseRevision: number; revision: number; patches: StatePatch[] }) => {
+      if (message.baseRevision !== revision.current) { connection.emit('state_request'); return; }
+      try { commit(applyStatePatch(stateRef.current, message.patches)); revision.current = message.revision; }
+      catch { connection.emit('state_request'); }
+    });
+    const receiveClock = (snapshot: ClockSnapshot) => {
+      clockRef.current = snapshot; setClock(snapshot);
+      window.dispatchEvent(new CustomEvent('tournament_clock_sync', { detail: snapshot }));
+    };
+    connection.on('timer_sync', receiveClock);
+    connection.on('audio_event', data => {
+      // Compatibilité avec un ancien serveur : le nouveau n’envoie plus les ticks ici.
       if (['timer_start', 'timer_tick', 'timer_pause', 'timer_end', 'timer_reset', 'prestart_begin'].includes(data.type)) receiveClock(data);
       window.dispatchEvent(new CustomEvent('tournament_audio_event', { detail: data }));
     });
-
-    socket.on('music_sync', (data) => {
-      window.dispatchEvent(new CustomEvent('tournament_music_sync', { detail: data }));
-    });
-
+    connection.on('music_sync', receiveMusicCommand);
+    setMusicSender(data => connection.emit('music_command', data));
+    const flush = () => { void saveRef.current.flush().catch(() => {}); persistQueue(); };
+    window.addEventListener('pagehide', flush);
     return () => {
-      if (fallbackTimer) clearTimeout(fallbackTimer);
-      socket.disconnect();
+      disposed = true; clearTimeout(fallbackTimer); clearInterval(retry); flush();
+      window.removeEventListener('pagehide', flush); connection.disconnect(); setMusicSender(() => {});
     };
-  }, []);
+  }, [isRemote, remoteView, commit, persistQueue]);
 
-  // Broadcast state changes to server or save locally in preview mode
-  useEffect(() => {
-    if (!isLoaded || isRemote) return;
-    
-    const currentStateString = JSON.stringify(state);
-    if (currentStateString === lastReceivedStateRef.current) return;
-
-    if (isPreviewMode || !socketRef.current?.connected) {
-      // Mode aperçu : enregistre les changements dans ce navigateur uniquement
-      try {
-        localStorage.setItem(STORAGE_KEY, currentStateString);
-      } catch (e) {
-        console.warn('LocalStorage save failed:', e);
-      }
-      saveToIndexedDB(state).catch(err => {
-        console.warn('IndexedDB save failed:', err);
-      });
-    } else {
-      // Réseau local : quand le serveur du PC est joignable, conserve le fonctionnement actuel
-      socketRef.current.emit('update_state', state);
-      
-      saveToIndexedDB(state).catch(err => {
-        console.warn('IndexedDB save failed:', err);
-      });
-      try {
-        localStorage.setItem(STORAGE_KEY, currentStateString);
-      } catch (e) {}
-    }
-    
-    lastReceivedStateRef.current = currentStateString;
-  }, [state, isLoaded, isPreviewMode]);
-
-  const emitAudioEvent = (data: any) => {
+  const emitAudioEvent = useCallback((data: any) => {
+    const current = stateRef.current, previous = clockRef.current;
     const timed = ['timer_start', 'timer_tick', 'timer_pause', 'timer_end', 'timer_reset', 'prestart_begin'].includes(data.type);
-    const previous = clockRef.current;
-    const enriched = timed ? { ...data, session: state.currentSession, finals: state.isFinalPhase,
-      matchIds: state.isFinalPhase ? Object.values(state.finalMatches).flat().filter(m => m.isReady && m.status !== 'finished').map(m => m.id) : state.matches.filter(m => m.sessionNumber === state.currentSession).map(m => m.id),
-      endsAt: data.type === 'prestart_begin' ? Date.now() + 5000 : data.type === 'timer_start' ? Date.now() + (data.payload?.timeLeft ?? state.timerDuration) * 1000 : data.type === 'timer_tick' ? previous?.endsAt : undefined,
-      breakEndsAt: data.type === 'timer_end' ? Date.now() + state.breakDuration * 1000 : undefined,
-      payload: data.type === 'timer_pause' ? { timeLeft: previous?.endsAt ? Math.max(0, Math.ceil((previous.endsAt - Date.now()) / 1000)) : previous?.payload?.timeLeft } : data.payload
+    const snapshot = timed ? { ...data, session: current.currentSession, finals: current.isFinalPhase,
+      matchIds: current.isFinalPhase ? Object.values(current.finalMatches).flat().filter(m => m.isReady && m.status !== 'finished').map(m => m.id) : current.matches.filter(m => m.sessionNumber === current.currentSession).map(m => m.id),
+      endsAt: data.type === 'prestart_begin' ? Date.now() + 5000 : data.type === 'timer_start' ? Date.now() + (data.payload?.timeLeft ?? current.timerDuration) * 1000 : data.type === 'timer_tick' ? previous?.endsAt : undefined,
+      breakEndsAt: data.type === 'timer_end' ? Date.now() + current.breakDuration * 1000 : undefined,
+      payload: data.type === 'timer_pause' ? { timeLeft: previous?.endsAt ? Math.max(0, Math.ceil((previous.endsAt - Date.now()) / 1000)) : previous?.payload?.timeLeft } : data.payload,
     } : data;
-    if (timed) { clockRef.current = enriched; setClock(enriched); }
-    socketRef.current?.emit('play_audio', enriched);
-  };
-
-  const emitMusicCommand = (data: any) => {
-    socketRef.current?.emit('music_command', data);
-  };
-  
-  if (!isLoaded) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600 dark:text-gray-400">Chargement des données...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <TournamentContext.Provider value={{ 
-      state, 
-      clock,
-      dispatch, 
-      emitAudioEvent, 
-      emitMusicCommand, 
-      isLoaded,
-      isPreviewMode,
-      socket: socketRef.current 
-    }}>
-      {children}
-    </TournamentContext.Provider>
-  );
+    if (timed && (data.type !== 'timer_tick' || !socketRef.current?.connected)) { clockRef.current = snapshot; setClock(snapshot); }
+    socketRef.current?.emit('play_audio', snapshot);
+  }, []);
+  const emitMusicCommand = useCallback((data: any) => { socketRef.current?.emit('music_command', data); }, []);
+  const value = useMemo(() => ({ state, dispatch, emitAudioEvent, emitMusicCommand, isLoaded, isPreviewMode, socket }), [state, dispatch, emitAudioEvent, emitMusicCommand, isLoaded, isPreviewMode, socket]);
+  if (!isLoaded) return <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900"><div className="text-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" /><p className="text-gray-600 dark:text-gray-400">Chargement des données...</p></div></div>;
+  return <TournamentContext.Provider value={value}><ClockContext.Provider value={clock}>{children}</ClockContext.Provider></TournamentContext.Provider>;
 };
-
+export const useOfficialClock = () => useContext(ClockContext);
 export const useTournament = () => {
   const context = useContext(TournamentContext);
-  if (context === undefined) {
-    throw new Error('useTournament must be used within a TournamentProvider');
-  }
+  if (!context) throw new Error('useTournament must be used within a TournamentProvider');
   return context;
 };
-
 export const useTournamentContext = useTournament;
-

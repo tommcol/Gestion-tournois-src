@@ -1,3 +1,6 @@
+import { tournamentReducer } from './context/tournamentReducer';
+import { diffState } from './utils/statePatch';
+import { createCoalescedSave } from './utils/coalescedSave';
 import { calculateAllStandings } from './utils/standingsLogic';
 import { receiveCourtScore } from './utils/courtResults';
 import { ClockSnapshot } from './utils/tournamentFlow';
@@ -31,7 +34,7 @@ async function startServer() {
 
     let persistenceQueue: Promise<void> = Promise.resolve();
     const persistTournamentState = (state: any) => {
-        const serializedState = JSON.stringify(state, null, 2);
+        const serializedState = JSON.stringify(state);
         const writeTask = persistenceQueue.then(async () => {
             await fs.promises.mkdir(DATA_DIR, { recursive: true });
             const temporaryFile = `${DATA_FILE}.${process.pid}.${Date.now()}.tmp`;
@@ -62,14 +65,14 @@ async function startServer() {
         }
         
         // Renommage automatique avec préfixe Date.now()
-        const finalFileName = `${Date.now()}_${fileName}`;
+        const finalFileName = `${Date.now()}_${path.basename(fileName)}`;
         const filePath = path.join(UPLOADS_DIR, finalFileName);
         
         fs.writeFileSync(filePath, req.body);
         res.json({ url: `/uploads/${finalFileName}` });
     });
 
-    app.use('/uploads', express.static(UPLOADS_DIR));
+    app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '1y', immutable: true }));
 
     app.get('/health', (_req, res) => {
         res.json({ ok: true });
@@ -90,11 +93,26 @@ async function startServer() {
 
     // --- Persistence Logic ---
     let tournamentState: any = null;
+    let revision = 0;
+    let recentActions: string[] = [];
+    const activeActions = new Map<string, Promise<void>>();
+    const stateSaver = createCoalescedSave<any>(persistTournamentState, 200);
+    const saveState = (immediate = false) => stateSaver.save({ ...tournamentState, __sync: { revision, recentActions: [...recentActions] } }, immediate);
+    const broadcastState = (previous: any) => {
+        const patches = diffState(previous, tournamentState);
+        if (!patches.length) return;
+        const baseRevision = revision++;
+        io.to('incremental').emit('state_patch', { baseRevision, revision, patches });
+        io.to('legacy').emit('state_update', tournamentState);
+    };
 
     if (fs.existsSync(DATA_FILE)) {
         try {
             const data = fs.readFileSync(DATA_FILE, 'utf8');
             tournamentState = JSON.parse(data);
+            revision = tournamentState.__sync?.revision || 0;
+            recentActions = tournamentState.__sync?.recentActions || [];
+            delete tournamentState.__sync;
             console.log('Loaded tournament state from disk');
         } catch (e) {
             console.error('Failed to load tournament state:', e);
@@ -123,13 +141,13 @@ async function startServer() {
         }
     };
 
-    const saveSnapshot = (state: any, sessionNum: number) => {
+    const saveSnapshot = async (state: any, sessionNum: number) => {
         try {
             if (!fs.existsSync(BACKUPS_DIR)) {
-                fs.mkdirSync(BACKUPS_DIR, { recursive: true });
+                await fs.promises.mkdir(BACKUPS_DIR, { recursive: true });
             }
             const fileName = `tournament_data_session_${sessionNum}_${Date.now()}.json`;
-            fs.writeFileSync(path.join(BACKUPS_DIR, fileName), JSON.stringify(state, null, 2));
+            await fs.promises.writeFile(path.join(BACKUPS_DIR, fileName), JSON.stringify(state));
             console.log(`Created snapshot for session ${sessionNum}`);
             cleanupSnapshots();
         } catch (e) {
@@ -155,11 +173,16 @@ async function startServer() {
             clock = { ...clock, type: 'timer_end', payload: { timeLeft: 0 }, breakEndsAt: clock.endsAt + (tournamentState?.breakDuration || 0) * 1000, endsAt: undefined };
             saveAuxiliary(CLOCK_FILE, clock);
             io.emit('timer_sync', clock);
-            io.emit('audio_event', clock);
+            io.to('legacy').emit('audio_event', clock);
         }
     };
-    const expiryTimer = setInterval(expireClock, 250);
+    const expiryTimer = setInterval(expireClock, 1000);
     expiryTimer.unref();
+
+    let musicSnapshot: any = null;
+    const MUSIC_FILE = path.join(DATA_DIR, 'music_state.json');
+    try { musicSnapshot = JSON.parse(fs.readFileSync(MUSIC_FILE, 'utf8')); } catch {}
+    const musicSaver = createCoalescedSave<any>(async value => { saveAuxiliary(MUSIC_FILE, value); }, 1000);
 
     // --- Socket.io Logic ---
     let courtReadyStatus: Record<number, boolean> = {};
@@ -170,11 +193,15 @@ async function startServer() {
 
         expireClock();
         if (clock) socket.emit('timer_sync', clock);
+        if (musicSnapshot) socket.emit('music_sync', musicSnapshot);
         const role = socket.handshake.auth?.role || 'admin';
+        socket.join(socket.handshake.auth?.protocol === 2 ? 'incremental' : 'legacy');
 
         // Send initial state
         if (tournamentState) {
-            socket.emit('state_update', tournamentState);
+            socket.emit('state_update', tournamentState, { revision });
+        } else {
+            socket.emit('server_empty');
         }
 
         // NOUVEAU : Scores en direct existants
@@ -196,9 +223,52 @@ async function startServer() {
             });
         }
 
+        socket.on('state_request', () => {
+            if (tournamentState) socket.emit('state_update', tournamentState, { revision });
+            else socket.emit('server_empty');
+        });
+        socket.on('initialize_state', async (state: any) => {
+            if (role !== 'admin' || !Array.isArray(state?.matches) || !state.finalMatches) return;
+            if (!tournamentState) {
+                tournamentState = tournamentReducer(state, { type: 'SET_STATE', payload: state });
+                revision++;
+                await saveState(true).catch(error => console.error('Initialisation non sauvegardée:', error));
+                io.emit('state_update', tournamentState, { revision });
+            } else socket.emit('state_update', tournamentState, { revision });
+        });
+        const validActions = new Set(['SET_STATE', 'UPDATE_CONFIG', 'UPDATE_SOUND_CONFIG', 'ADD_CATEGORY', 'UPDATE_CATEGORY', 'DELETE_CATEGORY', 'ADD_TEAM', 'UPDATE_TEAM', 'DELETE_TEAM', 'GENERATE_CATEGORY_POOLS_AND_MATCHES', 'RESET_CATEGORY_POOLS', 'UPDATE_MATCH_SCORE', 'UPDATE_FINAL_CONFIG', 'GENERATE_FINAL_PHASE', 'UPDATE_MANUAL_PAIRINGS', 'UPDATE_FINAL_MATCH_SCORE', 'UPDATE_FINAL_MATCH_COURT', 'SET_FINAL_MATCH_READY', 'DELETE_FINAL_PHASE', 'ADD_SPONSOR', 'UPDATE_SPONSOR', 'DELETE_SPONSOR', 'UPDATE_PLAYLIST', 'NEXT_SESSION', 'PREVIOUS_SESSION', 'RESET_SESSIONS', 'FINISH_POOL_STAGE', 'START_FINAL_PHASE', 'START_TOURNAMENT', 'SET_TV_ROUND', 'CLEAR_DATA', 'RESET_TOURNAMENT']);
+        socket.on('tournament_action', async (request, acknowledge = () => {}) => {
+            if (role !== 'admin' || !tournamentState || typeof request?.id !== 'string' || request.id.length > 128 || !validActions.has(request.action?.type)) return acknowledge({ status: 'rejected', error: 'Commande invalide.' });
+            const { id, action } = request;
+            if (recentActions.includes(id)) {
+                try { await (activeActions.get(id) || saveState(true)); acknowledge({ status: 'received' }); }
+                catch { acknowledge({ status: 'retry' }); }
+                return;
+            }
+            const previous = tournamentState;
+            try {
+                const next = tournamentReducer(previous, action);
+                const snapshot = getPreviousSessionSnapshot(previous, next);
+                tournamentState = next;
+                if (snapshot) {
+                    void saveSnapshot(snapshot.state, snapshot.sessionNumber);
+                    courtReadyStatus = {}; liveScoresState = {}; io.emit('courts_reset');
+                }
+                recentActions = [...recentActions.slice(-511), id];
+                broadcastState(previous);
+                const durable = saveState(['UPDATE_MATCH_SCORE', 'UPDATE_FINAL_MATCH_SCORE', 'SET_STATE', 'NEXT_SESSION', 'PREVIOUS_SESSION', 'CLEAR_DATA', 'RESET_TOURNAMENT'].includes(action.type));
+                activeActions.set(id, durable);
+                try { await durable; acknowledge({ status: 'received' }); }
+                catch { acknowledge({ status: 'retry' }); }
+                finally { activeActions.delete(id); }
+            } catch (error) { acknowledge({ status: 'rejected', error: 'Modification impossible. Vérifiez les données saisies.' }); }
+        });
+
+        // Ancien protocole conservé pour les appareils déjà ouverts.
         // Handle state updates from clients
         socket.on('update_state', (newState: any) => {
             if (role !== 'admin' || !Array.isArray(newState?.matches) || !newState?.finalMatches) return;
+            newState = { ...newState }; delete newState.__sync;
             // Keep the old state before replacing it. It is the snapshot of the
             // session that just ended when currentSession increases.
             const previousState = tournamentState;
@@ -239,36 +309,38 @@ async function startServer() {
             tournamentState.standings = calculateAllStandings(tournamentState.pools || [], tournamentState.matches);
             const sessionSnapshot = getPreviousSessionSnapshot(previousState, newState);
             if (sessionSnapshot) {
-                saveSnapshot(sessionSnapshot.state, sessionSnapshot.sessionNumber);
+                void saveSnapshot(sessionSnapshot.state, sessionSnapshot.sessionNumber);
                 courtReadyStatus = {};
                 liveScoresState = {};
                 io.emit('courts_reset');
             }
 
-            void persistTournamentState(tournamentState).catch((err) => {
+            broadcastState(previousState);
+            void saveState().catch((err) => {
                 console.error('Erreur sauvegarde état reçu:', err);
             });
-            io.emit('state_update', tournamentState);
         });
 
         socket.on('court_submit', async (submission, acknowledge = () => {}) => {
             if (!tournamentState) return acknowledge({ status: 'rejected' });
             if (receipts[submission?.id] && receipts[submission.id].status !== 'conflict') return acknowledge(receipts[submission.id]);
             if (submission?.automatic && clock?.matchIds.includes(submission.matchId) && (clock.type === 'timer_pause' || (['timer_start', 'timer_tick'].includes(clock.type) && clock.endsAt && clock.endsAt > Date.now()))) return acknowledge({ status: 'clock', clock });
+            const previousState = tournamentState;
             const result = receiveCourtScore(tournamentState, submission);
             tournamentState = result.state;
+            broadcastState(previousState);
             try {
-                await persistTournamentState(tournamentState);
+                await saveState(true);
                 if (['received', 'conflict'].includes(result.status)) {
                     receipts[submission.id] = { status: result.status };
                     saveAuxiliary(RECEIPTS_FILE, receipts);
                 }
-                io.emit('state_update', tournamentState);
                 acknowledge({ status: result.status });
             } catch { acknowledge({ status: 'retry' }); }
         });
         socket.on('court_resolve', async ({ id, useTablet }, acknowledge = () => {}) => {
             if (role !== 'admin') return;
+            const previousState = tournamentState;
             const conflict = tournamentState?.courtConflicts?.find((c: any) => c.id === id);
             if (!conflict) return;
             if (useTablet) {
@@ -277,20 +349,21 @@ async function startServer() {
                 tournamentState = result.state;
             }
             tournamentState = { ...tournamentState, courtConflicts: tournamentState.courtConflicts.filter((c: any) => c.id !== id) };
+            broadcastState(previousState);
             receipts[id] = { status: 'received' };
             try {
-                await persistTournamentState(tournamentState);
+                await saveState(true);
                 saveAuxiliary(RECEIPTS_FILE, receipts);
-                io.emit('state_update', tournamentState);
                 acknowledge({ status: 'received' });
             } catch { acknowledge({ status: 'retry' }); }
         });
         socket.on('court_overtime', ({ matchId, categoryId, court }, acknowledge = () => {}) => {
             const match = tournamentState?.finalMatches?.[categoryId]?.find((m: any) => m.id === matchId && m.court === court && m.status !== 'finished');
             if (!match) return acknowledge({ status: 'rejected' });
-            match.isOvertime = true;
-            void persistTournamentState(tournamentState).catch(err => console.error('Prolongation non sauvegardée:', err));
-            io.emit('state_update', tournamentState);
+            const previousState = tournamentState;
+            tournamentState = { ...tournamentState, finalMatches: { ...tournamentState.finalMatches, [categoryId]: tournamentState.finalMatches[categoryId].map((m: any) => m.id === matchId ? { ...m, isOvertime: true } : m) } };
+            broadcastState(previousState);
+            void saveState().catch(err => console.error('Prolongation non sauvegardée:', err));
             acknowledge({ status: 'received' });
         });
 
@@ -332,7 +405,7 @@ async function startServer() {
         // Handle audio events (sync)
         socket.on('play_audio', (data) => {
             if (role !== 'admin') return;
-            if (data.type === 'timer_end' && clock?.type === 'timer_end' && clock.session === data.session && clock.finals === data.finals) { io.emit('timer_sync', clock); return; }
+            if (data.type === 'timer_end' && clock?.type === 'timer_end' && clock.session === data.session && clock.finals === data.finals) { socket.emit('timer_sync', clock); return; }
             if (['timer_start', 'timer_tick', 'timer_pause', 'timer_end', 'timer_reset', 'prestart_begin'].includes(data.type)) {
                 // Ne jamais redonner du temps après l'échéance officielle.
                 if (data.type === 'timer_tick' && clock?.type === 'timer_end' && clock.session === data.session) return;
@@ -342,11 +415,17 @@ async function startServer() {
             }
             // Broadcast to everyone (including sender if they need it, but usually sender plays locally first)
             // Actually, for sync, it's better to broadcast to OTHERS
-            socket.broadcast.emit('audio_event', data);
+            if (['timer_start', 'timer_tick', 'timer_pause', 'timer_end', 'timer_reset', 'prestart_begin'].includes(data.type)) socket.to('legacy').emit('audio_event', data);
+            else socket.broadcast.emit('audio_event', data);
         });
 
         // Handle music sync
         socket.on('music_command', (data) => {
+            if (role !== 'admin') return;
+            if (data?.command === 'snapshot') {
+                musicSnapshot = data;
+                void musicSaver.save(data).catch(error => console.error('Position musicale non sauvegardée:', error));
+            }
             socket.broadcast.emit('music_sync', data);
         });
 

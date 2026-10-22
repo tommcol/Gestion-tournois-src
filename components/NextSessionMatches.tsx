@@ -169,4 +169,4 @@ const NextSessionMatches: React.FC<NextSessionMatchesProps> = ({ matches, teams,
     );
 };
 
-export default NextSessionMatches;
+export default React.memo(NextSessionMatches);

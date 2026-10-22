@@ -162,5 +162,5 @@ const TVBracket: React.FC<TVBracketProps> = ({ category, finalMatches, teams }) 
     );
 };
 
-export default TVBracket;
+export default React.memo(TVBracket);
 

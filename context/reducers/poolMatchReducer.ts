@@ -3,7 +3,7 @@ import { validScore } from '../../utils/tournamentFlow';
 import { TournamentState, TournamentAction, Pool } from '../../types';
 import { generatePools, generateMatchesForPools, generateSwissMatches } from '../../utils/poolLogic';
 import { generateSchedule } from '../../utils/scheduleLogic';
-import { calculateAllStandings } from '../../utils/standingsLogic';
+import { calculateAllStandings, calculatePoolStandings } from '../../utils/standingsLogic';
 import { generateId } from '../../utils/id';
 
 export const poolMatchReducer = (state: TournamentState, action: TournamentAction): TournamentState => {
@@ -86,6 +86,9 @@ export const poolMatchReducer = (state: TournamentState, action: TournamentActio
     case 'UPDATE_MATCH_SCORE': {
       if (!validScore(action.payload.score1, action.payload.score2)) return state;
       const { matchId, score1, score2, isForfeit } = action.payload;
+      const changed = state.matches.find(m => m.id === matchId);
+      if (!changed) return state;
+      const pool = state.pools.find(p => p.id === changed.poolId);
       const newMatches = state.matches.map(m =>
         m.id === matchId
           ? { ...m, score1, score2, isForfeit, status: 'finished' as const }
@@ -94,7 +97,7 @@ export const poolMatchReducer = (state: TournamentState, action: TournamentActio
       return {
         ...state,
         matches: newMatches,
-        standings: calculateAllStandings(state.pools, newMatches),
+        standings: pool ? { ...state.standings, [pool.id]: calculatePoolStandings(pool, newMatches) } : state.standings,
       };
     }
     default:

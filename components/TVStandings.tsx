@@ -259,4 +259,5 @@ const TVStandings: React.FC<TVStandingsProps> = ({ isFinal, pageIndex, setPageIn
     );
 };
 
-export default TVStandings;
+export default React.memo(TVStandings);
+

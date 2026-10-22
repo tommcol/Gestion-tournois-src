@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { useTournament } from '../context/TournamentContext';
 import { Match, Category, Player, Team } from '../types';
 import { getAdminTeamName } from '../utils/helpers';
-import * as XLSX from 'xlsx';
+import type { Range } from 'xlsx';
 
 const TeamRoadmaps: React.FC = () => {
     const { state } = useTournament();
@@ -99,10 +99,11 @@ const TeamRoadmaps: React.FC = () => {
 
 
 
-    const exportOptimizedToExcel = () => {
+    const exportOptimizedToExcel = async () => {
+        const XLSX = await import('xlsx');
         const wb = XLSX.utils.book_new();
         const wsData: any[][] = [];
-        const merges: XLSX.Range[] = [];
+        const merges: Range[] = [];
         
         const teamsPerRow = teamsPerRowCount;
         const colOffset = 3 + (showReferee ? 2 : 0) + (showScorer ? 2 : 0) + 1; // +1 pour l'espace entre équipes
@@ -887,3 +888,4 @@ const TeamRoadmaps: React.FC = () => {
 };
 
 export default TeamRoadmaps;
+
