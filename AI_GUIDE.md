@@ -25,6 +25,8 @@
 ### Vérifications et maintenance
 - tests/onlineRoom.test.mjs : droits TV/terrains, voyant prêt, live sans classement, score officiel, renvoi après redémarrage, chrono et mises à jour partielles. Test Miniflare avec WebSockets, SQLite persistant, upload audio, lecture partielle et refus des accès non autorisés.
 - Tests Cloudflare exécutés avec Miniflare/Workerd en plus des scénarios Windows existants. GitHub Actions utilise Node 22 (requis par le runtime de test Cloudflare). Tester aussi après le déploiement réel avant de déclarer le mode en ligne opérationnel.
+- Essai sur Cloudflare effectué avec un tournoi fictif : lien organisateur, tablette terrain 1 et TV distincts ; voyant T1 vert, live 2–0 sans classement prématuré, score automatiquement reçu à la fin du chrono, puis classement mis à jour ; import d’un WAV lisible et d’un PNG dans les dossiers.
+- Les anciennes clés locales de commandes en attente et de serveur déjà utilisé sont conservées pour ne pas perdre un envoi Windows pendant la mise à jour. Un lien room sans code d’accès affiche une explication ; il ne charge pas un autre tournoi local.
 - Aucun changement des règles sportives, classements de départage ou disposition des commandes générales dans cette version.
 
 ## Ajustements des sélecteurs et impressions — version 2.3.1 du 22 octobre 2026

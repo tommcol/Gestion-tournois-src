@@ -35,5 +35,6 @@ export const loadTournamentState = async (): Promise<TournamentState | null> => 
 export const clearTournamentState = async () => {
   const db = await getDB();
   await db.delete(STORE_NAME, 'current:' + roomScope());
+  if (roomScope() === 'local') await db.delete(STORE_NAME, 'current');
 };
 

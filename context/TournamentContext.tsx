@@ -17,8 +17,8 @@ import { generateId } from '../utils/id';
 import { receiveMusicCommand, setMusicSender } from '../services/musicChannel';
 
 const LEGACY_KEY = 'tournament_preview_state' + (roomScope() === 'local' ? '' : ':' + roomScope());
-const QUEUE_KEY = 'tournament_pending_actions_v2:' + roomScope();
-const SERVER_KEY = 'tournament_local_server_seen:' + roomScope();
+const QUEUE_KEY = 'tournament_pending_actions_v2' + (roomScope() === 'local' ? '' : ':' + roomScope());
+const SERVER_KEY = 'tournament_local_server_seen' + (roomScope() === 'local' ? '' : ':' + roomScope());
 interface Pending { id: string; action: TournamentAction }
 async function loadLocal(): Promise<TournamentState> {
   try { const saved = await loadTournamentState(); if (saved) return saved; } catch {}
@@ -73,6 +73,10 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
 
   useEffect(() => {
     let disposed = false, loaded = false;
+    if (new URLSearchParams(window.location.search).has('room') && !getOnlineSession()) {
+      setConnectionIssue('Ce lien de tournoi est incomplet. Demandez à l’organisateur le lien complet avec son code d’accès.');
+      return;
+    }
     try { hadServer.current = !!getOnlineSession() || localStorage.getItem(SERVER_KEY) === 'true'; queue.current = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]'); } catch {}
     const fallback = async () => {
       if (loaded || disposed) return;

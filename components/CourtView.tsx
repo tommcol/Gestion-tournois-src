@@ -1,4 +1,4 @@
-import { roomScope } from '../services/onlineSession';
+import { getOnlineSession, roomScope } from '../services/onlineSession';
 import { getStartingBonus } from '../utils/startingBonus';
 import { ClockSnapshot } from '../utils/tournamentFlow';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -128,7 +128,7 @@ const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
   const time = draft?.remaining ?? state.timerDuration;
   return <div className="min-h-screen bg-gray-100 dark:bg-gray-900 max-w-[500px] mx-auto flex flex-col">
     <header className="bg-blue-700 text-white p-4 flex justify-between items-center"><div><div className="text-xs">Session {draft?.session || state.currentSession}</div><h1 className="text-xl font-bold">Terrain {courtNumber}</h1></div><div className="text-3xl font-mono font-bold">{draft?.overtime ? 'Prolongation' : `${Math.floor(time / 60)}:${String(time % 60).padStart(2, '0')}`}</div></header>
-    <div role="status" className={`p-3 text-center text-sm font-bold ${connected ? 'bg-green-100 text-green-900' : 'bg-amber-100 text-amber-900'}`}>{connected ? 'Connecté au PC' : 'Hors connexion — gardez cette page ouverte. Les points et fautes restent sur cette tablette.'}</div>
+    <div role="status" className={`p-3 text-center text-sm font-bold ${connected ? 'bg-green-100 text-green-900' : 'bg-amber-100 text-amber-900'}`}>{connected ? (getOnlineSession() ? 'Connecté au tournoi en ligne' : 'Connecté au PC') : 'Hors connexion — gardez cette page ouverte. Les points et fautes restent sur cette tablette.'}</div>
     {storageError && <p role="alert" className="p-3 bg-red-100 text-red-900">La tablette ne peut pas garder les données. Notez le score et les fautes sur papier avant de fermer cette page.</p>}
     {!draft ? <p className="p-8 text-center">Aucun match prévu sur ce terrain.</p> : <main className="p-4 space-y-4">
       {draft.phase === 'waiting' && <button className="w-full p-5 rounded-xl bg-blue-600 text-white text-xl font-bold" onClick={() => { socket?.emit('court_ready', { court: courtNumber, matchId: draft.matchId, categoryId: draft.categoryId }); save({ ...draft, phase: 'ready' }); }}>Équipes prêtes</button>}
