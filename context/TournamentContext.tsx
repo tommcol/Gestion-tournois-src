@@ -1,6 +1,6 @@
 import { liveScoresChannel } from '../services/liveScoresChannel';
 import { createTournamentStore, TournamentStateScope, useTournamentSelector } from './TournamentStore';
-export { useTournamentSelector, useTournamentFields, shallowEqual } from './TournamentStore';
+export { useTournamentSelector, useTournamentFields, useTournamentStateReader, shallowEqual } from './TournamentStore';
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, ReactNode } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { TournamentState, TournamentAction } from '../types';

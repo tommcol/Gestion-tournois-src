@@ -7,6 +7,43 @@
 ---
 
 
+## Feuilles de route et points déjà cochés — version 2.3.0 du 22 octobre 2026
+
+### Demande validée
+L’objectif prioritaire est l’économie de papier : plusieurs équipes par feuille, en conservant leurs noms et missions lisibles. Ne pas proposer une équipe par page par défaut. La remarque précédente sur une limitation à une seule catégorie des feuilles de match a été retirée par l’utilisateur ; conserver le regroupement des matchs de toutes les catégories de la session ou du terrain choisi.
+
+Dans la navigation générale, l’entrée Feuilles de Route reste à sa place. Seule sa page est réorganisée en deux espaces : **Feuilles de route des équipes** et **Feuilles de match**. Le chrono, la musique, les commandes générales et les règles sportives ne sont pas déplacés.
+
+### Feuilles de route : utilisation
+1. Choisir une catégorie.
+2. Garder toutes ses équipes cochées ou choisir seulement celles à réimprimer. Toutes les équipes / Tout décocher facilitent cette sélection ; les choix restent locaux à cette page, sans changer les inscriptions.
+3. Préparer l’aperçu. Le nombre réel de feuilles A4 paysage est annoncé avant l’impression.
+4. Imprimer les pages affichées. Les cartes sont regroupées automatiquement, avec plusieurs rangées si elles tiennent.
+
+Toutes les équipes d’une catégorie ont les mêmes colonnes, selon les obligations de cette catégorie : **Session, Match, Terrain**, plus **Arbitrage** si prévu, plus **Marque** si prévue. Une mission contient le nom complet du joueur et « Terrain N » dans la même case. Pas de colonnes T.A, T.M, T.Ma. Les cases restent présentes même lorsqu’une équipe n’a pas de mission à cette session. Le nom de l’équipe est en titre : la case Match indique son adversaire, sans répéter inutilement son propre nom.
+
+Le nombre de colonnes de cartes reste compact : jusqu’à six équipes côte à côte sans officiels, cinq avec un rôle, quatre avec les deux rôles. Le calcul de hauteur utilise les noms et missions ; plusieurs rangées partagent une feuille. Les longs plannings sont divisés en parties numérotées, sans retirer de session ou couper les noms. Toutes les missions sont conservées, y compris si plusieurs joueurs d’une équipe sont affectés à des matchs différents dans une session ou s’ils officient pour une autre catégorie. Les sessions précédant la première activité ou suivant la dernière activité de cette catégorie ne créent pas de lignes vides inutiles ; les numéros réels des sessions sont conservés et les missions extérieures comptent dans cette plage.
+
+Les actions Exporter Excel et Copier pour Sheets restent disponibles dans Autres exports et utilisent les seules équipes choisies. Le calendrier de la catégorie passe également par un aperçu paginé ; il lit les scores officiels actuels au moment de sa préparation. L’aperçu est un document préparé, pas un écran de scores en direct.
+
+### Feuilles de match et bonus
+Le choix Par session / Par terrain concerne seulement les feuilles de match. L’aperçu propose jusqu’à six matchs par feuille en mode économique, ou quatre en plus grand. Si les noms sont trop longs pour le mode compact, le document utilise quatre cartes ; le compteur annonce le nombre effectivement préparé. Les 21 cases de marque, les 13 cases de fautes et la ligne de score final sont conservées. La mise en page papier est sobre pour limiter l’encre.
+
+Règle existante conservée : zéro joueuse = zéro point de départ, une joueuse = un point, deux joueuses ou plus = deux points. Le seul nom « catégorie mixte » ne permet pas d’attribuer un bonus. `utils/startingBonus.ts` utilise le nombre de joueuses explicitement renseigné ; s’il manque dans une ancienne équipe, il compte les joueurs dont le genre est Femme. Un nombre explicite zéro reste prioritaire. Le helper est utilisé par les feuilles, les libellés d’équipes et l’initialisation d’un nouveau match tablette, pour garder le même résultat. Il ne modifie aucun score validé ni un brouillon tablette déjà commencé et n’ajoute pas une deuxième fois le bonus à un résultat saisi.
+
+Chaque feuille indique clairement « Départ : N point(s) déjà coché(s) » (ou zéro point d’avance). Les premières cases concernées portent une vraie croix vectorielle noire SVG, et pas seulement un fond orange : elles restent identifiables lorsque l’impression des couleurs/fonds est désactivée. Si aucune joueuse n’est renseignée, aucune case n’est inventée ; l’interface explique la source du bonus.
+
+### Code et précautions de maintenance
+- `utils/paperDocuments.ts` prépare des documents immuables pour les routes, les matchs et le calendrier. Les missions sont indexées par session et les noms par identifiant. La pagination tient compte des largeurs et de la mesure de texte du navigateur.
+- `components/PaperPages.tsx` rend les mêmes pages pour l’aperçu et l’impression ; `PaperPreview.tsx` adapte uniquement le zoom de l’aperçu à la largeur disponible. Les pages imprimées gardent les dimensions A4.
+- `components/paperPrint.css` limite les styles d’impression au mode papier via une classe temporaire sur le corps de la page, retirée au démontage. La page nommée `tournamentPaper` définit l’A4 paysage. Ne pas réintroduire un `body > * { display: none }` global, qui casserait les autres impressions.
+- `TeamRoadmaps.tsx` ne construit plus une grande section cachée à chaque score. Les documents sont préparés sur clic et leur aperçu est mémorisé. `samePaperMatches` ignore les scores pour l’abonnement au planning papier, mais détecte les changements d’équipes, terrains, sessions, arbitres et marqueurs. Les changements de sélection ou de planning annulent l’ancien aperçu.
+- `useTournamentStateReader` fournit une lecture ponctuelle du tournoi pour le calendrier, sans abonner le formulaire papier à tous les résultats.
+
+Vérifications : préparation de l’application et du serveur, **51 tests** dont douze tests papier : quatre configurations d’officiels, regroupement compact, sélection d’équipes, missions multiples, planning long, noms complets, bonus anciens/explicites, croix noires, pagination 4/6, compte des pages, absence de reconstruction sur un simple score, et isolation des styles d’impression. La fabrication Windows et le déploiement Cloudflare doivent être confirmés avant d’annoncer leur disponibilité. Une vérification de l’aperçu ne remplace pas un essai sur l’imprimante du club ; le format attendu est A4 paysage à taille réelle, sans en-têtes/pieds de page ajoutés par le navigateur.
+
+---
+
 ## Scores en direct et mises à jour ciblées — version 2.2.1 du 22 octobre 2026
 
 ### Décision de l’organisateur

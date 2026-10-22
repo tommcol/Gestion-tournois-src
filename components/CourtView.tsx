@@ -1,3 +1,4 @@
+import { getStartingBonus } from '../utils/startingBonus';
 import { ClockSnapshot } from '../utils/tournamentFlow';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTournamentContext, useOfficialClock } from '../context/TournamentContext';
@@ -34,7 +35,7 @@ const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
     if (current && current.phase !== 'sent') return;
     const t1 = state.teams.find(t => t.id === available.team1Id);
     const t2 = state.teams.find(t => t.id === available.team2Id);
-    const b1 = Math.min(2, t1?.womenCount || 0), b2 = Math.min(2, t2?.womenCount || 0);
+    const b1 = getStartingBonus(t1), b2 = getStartingBonus(t2);
     save({ id: generateId(), matchId: available.id, court: courtNumber,
       categoryId: 'categoryId' in available ? available.categoryId : undefined,
       team1Name: t1?.name || 'Équipe 1', team2Name: t2?.name || 'Équipe 2', score1: b1, score2: b2,

@@ -45,3 +45,10 @@ export function useTournamentFields<K extends keyof TournamentState>(...keys: K[
     return selected;
   }, shallowEqual);
 }
+
+// Lecture ponctuelle pour un export, sans abonner tout le formulaire aux scores.
+export function useTournamentStateReader() {
+  const store = useContext(StateContext);
+  if (!store) throw new Error('La lecture doit être utilisée dans TournamentStateScope');
+  return store.getState;
+}

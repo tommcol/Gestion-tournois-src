@@ -1,10 +1,11 @@
+import { getStartingBonus } from './startingBonus';
 
 import { Team } from '../types';
 
 export const getAdminTeamName = (team: Team | null | undefined): string => {
     if (!team) return 'Équipe Inconnue';
-    if (team.womenCount !== undefined && team.womenCount > 0) {
-        const bonus = team.womenCount >= 2 ? '+2' : '+1';
+    if (getStartingBonus(team) > 0) {
+        const bonus = `+${getStartingBonus(team)}`;
         return `${team.name} ${bonus}`;
     }
     return team.name;
@@ -19,3 +20,4 @@ export const shuffleArray = <T,>(array: T[]): T[] => {
   }
   return shuffled;
 };
+
