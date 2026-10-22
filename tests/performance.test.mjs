@@ -4,6 +4,7 @@ import { diffState, applyStatePatch, shareUnchanged } from '../utils/statePatch.
 import { createCoalescedSave } from '../utils/coalescedSave.ts';
 import { MusicController } from '../services/MusicController.ts';
 import { tournamentReducer } from '../context/tournamentReducer.ts';
+import { remainingSeconds } from '../utils/tournamentFlow.ts';
 import { initialData } from '../data/initialData.ts';
 import { calculateAllStandings } from '../utils/standingsLogic.ts';
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -109,4 +110,13 @@ test('musique : lecture bloquée par le navigateur puis reprise au clic', async 
   const { player, audio } = makePlayer({ music: JSON.stringify({ url: '/a.mp3', currentTime: 45, isPlaying: true }) }); audio.rejectPlay = true;
   player.setPlaylist(tracks); audio.metadata(); await wait(0); assert.equal(player.getSnapshot().isPlaying, false); assert.equal(audio.currentTime, 45);
   audio.rejectPlay = false; await player.play(); assert.equal(player.getSnapshot().isPlaying, true); assert.equal(audio.currentTime, 45); assert.equal(audio.loads, 1);
+});
+
+test('chrono : le départ affiche cinq secondes, puis reste calé sur l’échéance réelle', t => {
+  t.mock.method(Date, 'now', () => 10000);
+  assert.equal(remainingSeconds(15000), 5);
+  assert.equal(remainingSeconds(15000, 11001), 4);
+  assert.equal(remainingSeconds(15000, 14999), 1);
+  assert.equal(remainingSeconds(15000, 15000), 0);
+  assert.equal(remainingSeconds(15000, 18000), 0);
 });

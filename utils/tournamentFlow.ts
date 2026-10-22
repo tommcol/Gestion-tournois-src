@@ -1,5 +1,8 @@
 import { FinalMatch, Match, TournamentState, TVMoment, TVMomentConfig } from '../types';
 
+// Toujours lire l’heure actuelle au rendu : une ancienne valeur React peut afficher 6 au lieu de 5 au départ.
+export const remainingSeconds = (endsAt: number, now = Date.now()) => Math.max(0, Math.ceil((endsAt - now) / 1000));
+
 export const validScore = (a: unknown, b: unknown) => Number.isInteger(a) && Number.isInteger(b) && Number(a) >= 0 && Number(b) >= 0;
 export const completeMatch = (m: Match | FinalMatch) => m.status === 'finished' && validScore(m.score1, m.score2) && (!('categoryId' in m) || !!m.isForfeit || m.score1 !== m.score2);
 export const sessionCanCollapse = (matches: Match[]) => matches.length > 0 && matches.every(completeMatch);

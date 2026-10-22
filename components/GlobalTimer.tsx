@@ -1,3 +1,4 @@
+import { remainingSeconds } from '../utils/tournamentFlow';
 import React, { useState, useEffect, useRef } from 'react';
 import { useTournament, useOfficialClock } from '../context/TournamentContext';
 import { soundManager } from '../assets/sounds';
@@ -7,12 +8,12 @@ const GlobalTimer: React.FC = () => {
     const clock = useOfficialClock();
     const { timerDuration, soundConfig, isTournamentStarted } = state;
     const passive = new URLSearchParams(window.location.search).get('view')?.startsWith('tv') || new URLSearchParams(window.location.search).get('view') === 'court';
-    const [now, setNow] = useState(Date.now());
+    const [, setNow] = useState(Date.now());
     const current = clock?.session === state.currentSession && clock.finals === state.isFinalPhase ? clock : null;
     const isRunning = !!current && ['timer_start', 'timer_tick'].includes(current.type);
     const isPreStarting = current?.type === 'prestart_begin';
-    const timeLeft = current?.type === 'timer_end' ? 0 : isRunning && current?.endsAt ? Math.max(0, Math.ceil((current.endsAt - now) / 1000)) : current?.payload?.timeLeft ?? timerDuration;
-    const preStartCount = current?.endsAt ? Math.max(0, Math.ceil((current.endsAt - now) / 1000)) : 5;
+    const timeLeft = current?.type === 'timer_end' ? 0 : isRunning && current?.endsAt ? remainingSeconds(current.endsAt) : current?.payload?.timeLeft ?? timerDuration;
+    const preStartCount = current?.endsAt ? remainingSeconds(current.endsAt) : 5;
     const latest = useRef({ current, state, emitAudioEvent });
     latest.current = { current, state, emitAudioEvent };
     const starting = useRef(false);
