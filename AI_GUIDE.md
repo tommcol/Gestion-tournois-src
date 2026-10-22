@@ -25,6 +25,8 @@ L’habillage colore les commandes principales, l’onglet sélectionné, les fo
 - `TournamentConfig.tsx` : les champs de configuration ne sont plus réinitialisés pour une simple modification d’apparence ; seuls leurs paramètres correspondants déclenchent leur mise à jour.
 - `tests/appearance.test.mjs` : anciennes sauvegardes, lisibilité des couleurs, absence de modification des données sportives et conservation après réouverture/export/import.
 
+Vérifications : préparation de l’application et du serveur réussie, 22 tests automatiques. Dans le navigateur, les couleurs des deux écrans restent indépendantes et conservées après rechargement ; modifier l’apparence n’efface pas une saisie de configuration non sauvegardée. Le retour au Bleu électrique est accessible dans la même rubrique.
+
 Sur le réseau local, l’apparence choisie est transmise aux écrans par le mécanisme existant. Sur Cloudflare, chaque navigateur conserve son aperçu et ses choix localement ; cette fonction n’ajoute pas la synchronisation des appareils.
 
 ---

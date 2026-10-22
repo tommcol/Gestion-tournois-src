@@ -94,8 +94,7 @@
 .appearance-organizer [class*="dark:bg-blue-900/"] { background-color: var(--ui-accent-soft) !important; }
 .appearance-organizer [class*="border-gray-"],
 .appearance-organizer [class*="dark:border-gray-"] { border-color: var(--ui-line) !important; }
-.appearance-organizer [class*="border-blue-"],
-.appearance-organizer [class*="border-indigo-"] { border-color: var(--ui-accent) !important; }
+.appearance-organizer :is([class~="border-blue-100"], [class~="border-blue-200"], [class~="border-blue-300"], [class~="border-blue-500"], [class~="border-blue-600"], [class~="border-blue-700"], [class~="border-indigo-500"]) { border-color: var(--ui-accent) !important; }
 .appearance-organizer tr[class~="bg-white"]:nth-child(even),
 .appearance-organizer thead[class~="bg-gray-50"] { background-color: var(--ui-panel-alt) !important; }
 .appearance-organizer button {
@@ -145,6 +144,13 @@
 /* Les commandes sur fond sombre conservent des libellés clairs. */
 .appearance-organizer > header .text-xl,
 .appearance-organizer > header .font-mono { color: #f5f8ff; }
+
+/* Même métrique du titre que dans l’ancien habillage : les boutons TV ne bougent pas. */
+.appearance-organizer > header .text-xl { letter-spacing: -0.02em; }
+/* Le lecteur reste sombre, avec des libellés lisibles dans les deux modes. */
+.appearance-organizer > header [class~="bg-gray-800"],
+.appearance-organizer > header [class~="dark:bg-gray-700"] { background: var(--ui-header) !important; color: var(--ui-nav-text) !important; }
+.appearance-organizer > header [class*="text-gray-"] { color: #d8e6fb !important; }
 
 /* Réglages nouveaux : styles limités à leur propre section et aux aperçus. */
 .appearance-color-picker { width: 48px; height: 36px; padding: 2px; cursor: pointer; border: 1px solid var(--ui-line); border-radius: 8px; }
