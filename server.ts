@@ -1,3 +1,6 @@
+import { calculateAllStandings } from './utils/standingsLogic';
+import { receiveCourtScore } from './utils/courtResults';
+import { ClockSnapshot } from './utils/tournamentFlow';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -134,12 +137,40 @@ async function startServer() {
         }
     };
 
+    // Les accusés de réception sont sauvegardés avec le tournoi : un renvoi après
+    // coupure ou redémarrage ne peut pas remplacer une correction de l'organisateur.
+    const RECEIPTS_FILE = path.join(DATA_DIR, 'court_receipts.json');
+    const CLOCK_FILE = path.join(DATA_DIR, 'timer_state.json');
+    let receipts: Record<string, { status: string }> = {};
+    let clock: ClockSnapshot | null = null;
+    try { receipts = JSON.parse(fs.readFileSync(RECEIPTS_FILE, 'utf8')); } catch {}
+    try { clock = JSON.parse(fs.readFileSync(CLOCK_FILE, 'utf8')); } catch {}
+    const saveAuxiliary = (file: string, value: unknown) => {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+        fs.writeFileSync(file + '.tmp', JSON.stringify(value));
+        fs.renameSync(file + '.tmp', file);
+    };
+    const expireClock = () => {
+        if (clock?.endsAt && clock.endsAt <= Date.now() && ['timer_start', 'timer_tick'].includes(clock.type)) {
+            clock = { ...clock, type: 'timer_end', payload: { timeLeft: 0 }, breakEndsAt: clock.endsAt + (tournamentState?.breakDuration || 0) * 1000, endsAt: undefined };
+            saveAuxiliary(CLOCK_FILE, clock);
+            io.emit('timer_sync', clock);
+            io.emit('audio_event', clock);
+        }
+    };
+    const expiryTimer = setInterval(expireClock, 250);
+    expiryTimer.unref();
+
     // --- Socket.io Logic ---
     let courtReadyStatus: Record<number, boolean> = {};
     let liveScoresState: Record<number, any> = {}; // court -> score data
 
     io.on('connection', (socket) => {
         console.log('Client connected:', socket.id);
+
+        expireClock();
+        if (clock) socket.emit('timer_sync', clock);
+        const role = socket.handshake.auth?.role || 'admin';
 
         // Send initial state
         if (tournamentState) {
@@ -167,6 +198,7 @@ async function startServer() {
 
         // Handle state updates from clients
         socket.on('update_state', (newState: any) => {
+            if (role !== 'admin' || !Array.isArray(newState?.matches) || !newState?.finalMatches) return;
             // Keep the old state before replacing it. It is the snapshot of the
             // session that just ended when currentSession increases.
             const previousState = tournamentState;
@@ -200,9 +232,11 @@ async function startServer() {
                     ...newState,
                     matches: mergedMatches,
                     finalMatches: mergedFinalMatches,
+                    courtConflicts: (tournamentState.courtConflicts || []).filter((c: any) => c.submission.categoryId ? mergedFinalMatches[c.submission.categoryId]?.some((m: any) => m.id === c.submission.matchId) : mergedMatches.some((m: any) => m.id === c.submission.matchId)),
                 };
             }
 
+            tournamentState.standings = calculateAllStandings(tournamentState.pools || [], tournamentState.matches);
             const sessionSnapshot = getPreviousSessionSnapshot(previousState, newState);
             if (sessionSnapshot) {
                 saveSnapshot(sessionSnapshot.state, sessionSnapshot.sessionNumber);
@@ -214,7 +248,50 @@ async function startServer() {
             void persistTournamentState(tournamentState).catch((err) => {
                 console.error('Erreur sauvegarde état reçu:', err);
             });
-            socket.broadcast.emit('state_update', tournamentState);
+            io.emit('state_update', tournamentState);
+        });
+
+        socket.on('court_submit', async (submission, acknowledge = () => {}) => {
+            if (!tournamentState) return acknowledge({ status: 'rejected' });
+            if (receipts[submission?.id] && receipts[submission.id].status !== 'conflict') return acknowledge(receipts[submission.id]);
+            if (submission?.automatic && clock?.matchIds.includes(submission.matchId) && (clock.type === 'timer_pause' || (['timer_start', 'timer_tick'].includes(clock.type) && clock.endsAt && clock.endsAt > Date.now()))) return acknowledge({ status: 'clock', clock });
+            const result = receiveCourtScore(tournamentState, submission);
+            tournamentState = result.state;
+            try {
+                await persistTournamentState(tournamentState);
+                if (['received', 'conflict'].includes(result.status)) {
+                    receipts[submission.id] = { status: result.status };
+                    saveAuxiliary(RECEIPTS_FILE, receipts);
+                }
+                io.emit('state_update', tournamentState);
+                acknowledge({ status: result.status });
+            } catch { acknowledge({ status: 'retry' }); }
+        });
+        socket.on('court_resolve', async ({ id, useTablet }, acknowledge = () => {}) => {
+            if (role !== 'admin') return;
+            const conflict = tournamentState?.courtConflicts?.find((c: any) => c.id === id);
+            if (!conflict) return;
+            if (useTablet) {
+                const result = receiveCourtScore(tournamentState, conflict.submission, true);
+                if (result.status !== 'received') return acknowledge({ status: 'rejected' });
+                tournamentState = result.state;
+            }
+            tournamentState = { ...tournamentState, courtConflicts: tournamentState.courtConflicts.filter((c: any) => c.id !== id) };
+            receipts[id] = { status: 'received' };
+            try {
+                await persistTournamentState(tournamentState);
+                saveAuxiliary(RECEIPTS_FILE, receipts);
+                io.emit('state_update', tournamentState);
+                acknowledge({ status: 'received' });
+            } catch { acknowledge({ status: 'retry' }); }
+        });
+        socket.on('court_overtime', ({ matchId, categoryId, court }, acknowledge = () => {}) => {
+            const match = tournamentState?.finalMatches?.[categoryId]?.find((m: any) => m.id === matchId && m.court === court && m.status !== 'finished');
+            if (!match) return acknowledge({ status: 'rejected' });
+            match.isOvertime = true;
+            void persistTournamentState(tournamentState).catch(err => console.error('Prolongation non sauvegardée:', err));
+            io.emit('state_update', tournamentState);
+            acknowledge({ status: 'received' });
         });
 
         // Tablette signale que les équipes sont prêtes
@@ -254,6 +331,15 @@ async function startServer() {
 
         // Handle audio events (sync)
         socket.on('play_audio', (data) => {
+            if (role !== 'admin') return;
+            if (data.type === 'timer_end' && clock?.type === 'timer_end' && clock.session === data.session && clock.finals === data.finals) { io.emit('timer_sync', clock); return; }
+            if (['timer_start', 'timer_tick', 'timer_pause', 'timer_end', 'timer_reset', 'prestart_begin'].includes(data.type)) {
+                // Ne jamais redonner du temps après l'échéance officielle.
+                if (data.type === 'timer_tick' && clock?.type === 'timer_end' && clock.session === data.session) return;
+                clock = data;
+                if (data.type !== 'timer_tick') saveAuxiliary(CLOCK_FILE, clock);
+                io.emit('timer_sync', clock);
+            }
             // Broadcast to everyone (including sender if they need it, but usually sender plays locally first)
             // Actually, for sync, it's better to broadcast to OTHERS
             socket.broadcast.emit('audio_event', data);
@@ -292,3 +378,4 @@ async function startServer() {
 }
 
 startServer();
+

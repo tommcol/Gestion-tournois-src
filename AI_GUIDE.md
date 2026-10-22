@@ -6,6 +6,63 @@
 
 ---
 
+
+## Mise à jour du 22 octobre 2026 — décisions de fonctionnement
+
+Cette section décrit les corrections intégrées à partir du dépôt `8ff7582746194d4ceacc0c80f61846f2221e9996`. Les repères de lignes présents plus bas proviennent de la version précédente : chercher les noms des fonctions plutôt que ces numéros. Ce guide explique le logiciel ; il ne remplace pas le règlement du tournoi.
+
+### Consignes pour l’IA qui reprend le projet
+L’organisateur ne sait pas coder : expliquer les comportements en français courant. Les demandes les plus récentes de l’utilisateur priment sur les anciennes consignes de cette conversation. Le 22 octobre 2026, il a autorisé l’intégration directe des corrections dans GitHub et demandé la mise à jour de ce guide. Ce n’est pas une autorisation générale pour toutes les futures modifications.
+
+Ne pas inventer de règle sportive. Les forfaits et la condition de fin de prolongation attendent le règlement officiel. Ne pas présenter la saisie papier pendant la session suivante comme un bug. Préserver les catégories multiples, le nombre variable d’équipes et les tableaux finaux déjà créés. Une génération de tableau ne doit pas démarrer son affichage TV. Tester le comportement réel et distinguer les tests automatiques d’un essai sur PC Windows, tablette et TV.
+
+### Sessions et résultats papier
+Une session se replie seulement lorsque tous ses matchs ont un score validé, qu’il ait été saisi sur le PC ou reçu d’une tablette. Passer à la session suivante ne suffit pas. Le titre et une flèche restent visibles ; cliquer permet de revoir les matchs. Les résultats papier peuvent être saisis pendant la session suivante. Un 0–0 de poule validé compte comme un résultat ; deux cases vides ne comptent pas.
+
+### Tablettes : points, fautes et coupures
+`CourtView` garde immédiatement une copie des points, fautes, équipes, terrain, état du match et échéance du chrono dans la mémoire du navigateur (`src-court-draft-v1-N`). Le chrono est recalé sur le PC sans réinitialiser les points ou les fautes. À son terme, le résultat est envoyé automatiquement ; le bouton permet aussi un envoi confirmé. Pendant une coupure, le résultat reste lisible en grand et le marqueur peut le montrer à l’organisateur. Tant que la réception n’est pas confirmée, un nouveau match ne remplace pas cet écran. Le résultat est renvoyé au retour du réseau.
+
+Le message `court_submit` porte un identifiant stable. Le serveur sauvegarde le résultat avant de confirmer sa réception et garde les accusés dans `court_receipts.json`. Un renvoi ne peut donc pas écraser une correction ultérieure du PC. Si le PC possède déjà un score différent, `courtConflicts` conserve les deux propositions. `OrganizerNotifications` propose « Garder le score PC » ou « Garder le score tablette ». Le marqueur ne peut plus modifier un score envoyé.
+
+Conserver la même adresse du PC et le même navigateur pour retrouver la copie locale. Effacer les données du navigateur supprime cette copie. Cette évolution ne fournit pas une installation hors ligne complète : sans réseau, une page déjà ouverte peut continuer, mais un rechargement dépend aussi de la disponibilité des fichiers de l’application. Garder la page ouverte pendant la coupure.
+
+### Égalité et prolongation
+Une égalité en phase finale est refusée dans la tablette, dans le traitement commun des résultats et dans la réception serveur. À la fin du chrono, le bouton « Prolongation » prévient le PC (`court_overtime`) ; le match porte ce libellé sur la TV. Les points et les fautes restent en place. La règle qui termine une prolongation attend le règlement : aucune durée, mort subite ou victoire à deux points n’est imposée. Le marqueur envoie le score décidé selon le règlement lorsqu’il n’y a plus égalité. Les forfaits gardent leur comportement actuel.
+
+### TV selon le moment du tournoi
+`TVMomentSettings` est disponible dans Configuration et, en version dépliable, dans le Calendrier Global. Les choix sont enregistrés dès qu’une case change. Chaque moment possède ses cases : matchs, résultats, classements, sponsors dans le défilement, sponsor au lancement, chronomètre et scores des tablettes. Sans choix particulier, le fonctionnement est :
+
+| Moment | Affichage par défaut |
+| --- | --- |
+| Arrivée | Sponsors seulement |
+| Tournoi démarré, premier match non lancé | Matchs de session 1 et sponsors autorisés |
+| Match en cours | Session suivante, résultats de la précédente s’il y en a, classements, sponsors autorisés |
+| Pause après le match | Même contenu ; compte à rebours de pause dans le bandeau |
+| Dernière session en cours | Résultats précédents, classements, sponsors autorisés ; pas de session inexistante |
+| Dernière session terminée | Résultats de cette dernière session et classements |
+| Phases finales lancées par l’organisateur | Tour en cours de chaque catégorie, avec sponsors selon les choix |
+
+Le sponsor au lancement se règle séparément des diapositives de sponsors. La case générale « Autoriser les sponsors (tous les moments) » peut couper tous les sponsors à tout moment et reste prioritaire sur ces choix. La création d’un tableau ne change pas le mode TV. L’organisateur lance lui-même l’affichage des finales. Les résultats de poule manquants des catégories concernées sont listés avant confirmation. Corriger une poule ne recalcule jamais un tableau final déjà créé.
+
+`currentFinalMatches` conserve tous les matchs du tour en cours, y compris ceux encore à jouer, jusqu’au dernier résultat validé. Deux catégories peuvent afficher deux tours différents. Finale et petite finale partagent le dernier niveau d’affichage. Une sélection administrative d’un tour futur ne fait pas disparaître les matchs non terminés du tour en cours. Relancer l’affichage TV ne réinitialise plus les résultats ou les terrains d’un tableau déjà commencé.
+
+### Horloge et échanges réseau
+`ClockSnapshot` transporte la session, le mode poules/finales, les matchs concernés et l’heure de fin. Le serveur la conserve dans `timer_state.json`, la renvoie aux nouveaux écrans (`timer_sync`) et marque la fin même si l’onglet du PC est fermé après le démarrage effectif du chrono. Le décompte de départ et les sons restent pilotés par le navigateur de l’organisateur. `GlobalTimer` utilise une heure de fin, pas une simple soustraction dépendant du rythme de l’onglet. Les composants cachés sur la TV restent passifs.
+
+Les vues tablette et TV n’envoient plus l’ensemble du tournoi avec `update_state`. Cette distinction des vues évite les écrasements involontaires ; elle ne constitue pas une authentification par mot de passe. Les contrôles réseau existants ne sont pas transformés en système de comptes.
+
+### Fichiers ajoutés et vérifications
+- `utils/tournamentFlow.ts` : règles de repli, sélection du tour final, moments TV et contenu attendu.
+- `utils/courtResults.ts` : réception des résultats, refus des égalités et mise en attente des conflits.
+- `components/TVMomentSettings.tsx` : cases TV selon les moments et accès rapide.
+- `components/OrganizerNotifications.tsx` : prolongations et choix entre deux scores différents.
+- `tests/tournamentFlow.test.mjs` : scénarios de journée et protection des résultats.
+- `tests/courtNetwork.test.mjs` : échanges réels avec le serveur, reconnexion, accusés conservés après redémarrage, conflits, prolongation et horloge.
+
+Cloudflare reste un aperçu sans le serveur local. Cette correction n’ajoute pas la synchronisation réseau à Cloudflare. Un échec d’ajout de musique affiche désormais un message au lieu de sembler réussir.
+
+---
+
 ## SOMMAIRE
 
 1. [À quoi sert l’application](#1-à-quoi-sert-lapplication)
@@ -133,12 +190,12 @@ Une catégorie représente une division sportive (ex. : *U13 Garçons*, *Seniors
    - Un compte à rebours visuel et sonore (5, 4, 3, 2, 1) se déclenche, suivi du coup de sifflet officiel.
    - Le chrono s'affiche en grand sur l'écran admin et sur la TV.
    - À 1 minute de la fin, un son d'avertissement retentit automatiquement.
-   - À 0 seconde, la corne de brume officielle (buzzer) retentit sur la sono.
+   - La lecture de la corne de fin démarre à 10 secondes restantes (le fichier personnalisé peut contenir le décompte et le buzzer). À zéro, le match se termine et la pause commence si elle est configurée.
 3. **Saisie et validation des scores sur l'Admin** :
    - Sur la ligne de chaque match de la session active, l'organisateur peut ajuster le score avec les boutons `+` et `-`.
    - Cliquer sur le bouton vert **« ✓ Valider »**.
    - Le match passe au statut *Terminé* (badge vert).
-   - En cas d'erreur, cliquer sur **« ✏️ Modifier »** pour corriger les points ou déclarer un **Forfait** (l'équipe absente reçoit 0 point au classement, l'adversaire reçoit 3 points de victoire avec un score officiel de 20-0).
+   - En cas d'erreur, cliquer sur **« ✏️ Modifier »** pour corriger les points ou déclarer un **Forfait** (l'équipe absente reçoit 0 point au classement, l'adversaire reçoit 3 points de victoire ; le code actuel conserve un score affiché de 0–0 et exclut ce match du calcul des points marqués/encaissés. Cette règle reste à confirmer avec les arbitres et le règlement officiel).
 4. **Passage à la session suivante** :
    - Cliquer sur le bouton bleu **« Lancer la session suivante »**.
    - Le numéro de session passe de 1 à 2.
@@ -202,7 +259,7 @@ Une catégorie représente une division sportive (ex. : *U13 Garçons*, *Seniors
 2. **Fonctionnement à la table** :
    - La tablette affiche le match prévu pour sa session et son terrain.
    - Les marqueurs cliquent sur le bouton **« Équipes prêtes »** : l'organisateur voit instantanément le voyant du terrain passer au vert sur son écran de contrôle.
-   - Pendant le match, le marqueur utilise les gros boutons tactiles `+1`, `+2`, `+3` pour ajouter les points au fur et à mesure. Chaque point est envoyé instantanément sur le bandeau défilant de la TV.
+   - Pendant le match, le marqueur utilise les boutons tactiles `+` et `−` (un point par clic) pour ajouter les points au fur et à mesure. Chaque point est envoyé instantanément sur le bandeau défilant de la TV.
    - Le marqueur peut aussi comptabiliser les fautes d'équipe avec un code couleur conforme aux règles FIBA 3x3 :
      - De 1 à 6 fautes : vert (fautes normales).
      - De 7 à 9 fautes : orange (2 lancers-francs automatiques).
@@ -259,9 +316,9 @@ Voici l'inventaire exhaustif de tous les contrôles visibles de l'application, c
   - *Bouton Volume (icône enceinte)* : Règle le niveau sonore de la musique.
 - **Chronomètre global (`GlobalTimer.tsx`)** :
   - *Affichage numérique (ex. : `10:00`)* : Indique le temps restant de la session.
-  - *Bouton « Démarrer » (vert)* : Lance le décompte sonore de 5 secondes puis démarre le chrono.
+  - *Bouton « Start » (vert)* : Lance le décompte sonore de 5 secondes puis démarre le chrono.
   - *Bouton « Pause » (orange)* : Met le chronomètre en pause sans réinitialiser le temps.
-  - *Bouton « Réinitialiser » (gris)* : Remet le chronomètre à la durée configurée pour la session.
+  - *Bouton « Reset » (rouge)* : Remet le chronomètre à la durée configurée pour la session.
 
 ---
 
@@ -378,10 +435,9 @@ Voici l'inventaire exhaustif de tous les contrôles visibles de l'application, c
 - **Section Équipe 1 & Équipe 2** :
   - Nom de l'équipe et badge de bonus féminin.
   - Gros chiffre du score actuel.
-  - Boutons de marque : `+1`, `+2`, `+3`, `-1`.
+  - Boutons de marque : `+` et `−` (un point par clic).
   - Boutons de fautes : `+ Faute`, `- Faute` avec compteur dynamique (vert / orange / rouge).
-  - Bouton `Temps-mort`.
-- **Bouton rouge « Déclarer forfait »** : Ouvre la confirmation de forfait pour l'équipe qui ne s'est pas présentée.
+- Les forfaits sont saisis par l’organisateur sur le PC ; aucun bouton forfait n’est ajouté à la tablette.
 - **Bouton bleu « Envoyer le score »** : Valide définitivement le match auprès du serveur central.
 
 ---
@@ -513,9 +569,9 @@ Voici l'analyse détaillée de chaque fichier du projet avec son rôle exact, se
 - **Fonctionnement** :
   - Lit le numéro du terrain passé dans l'URL.
   - Affiche les deux équipes avec leurs couleurs et leur bonus féminin.
-  - Envoie un signal réseau `live_score` à chaque clic sur `+1`, `+2`, `+3` pour répercuter le score en direct sur la TV.
+  - Envoie un signal réseau `live_score` à chaque changement de score pour répercuter le score en direct sur la TV.
   - Gère les boutons de fautes d'équipe avec avertissement visuel orange à 7 fautes et rouge à 10 fautes.
-  - Lors du clic sur « Envoyer le score », il transmet `UPDATE_MATCH_SCORE` et libère le terrain pour la session suivante.
+  - À la fin du chrono ou au clic sur « Envoyer le score », il transmet `court_submit`. Le terrain reste affiché jusqu’à confirmation de réception. Seul le PC peut ensuite corriger le score.
 
 #### 3. `components/GlobalTimer.tsx` (Régie Chronomètre — 210 lignes)
 - **À quoi il sert** : Contrôle le décompte officiel du temps et déclenche les alertes sonores sur le PC et sur les téléviseurs connectés.
@@ -543,7 +599,7 @@ L'application utilise un système de stockage à quatre niveaux :
 ### 2. Le cheminement d'une action utilisateur (Exemple : validation d'un panier sur une tablette)
 ```
 [Tablette Terrain 1]
-    │ L'utilisateur clique sur "+2 points"
+    │ L'utilisateur clique deux fois sur "+"
     ▼
 [CourtView.tsx]
     │ Met à jour son affichage local
@@ -559,7 +615,7 @@ L'application utilise un système de stockage à quatre niveaux :
 
 ### 3. Que se passe-t-il en cas de coupure de courant ou de panne réseau ?
 - **Si le réseau Wi-Fi se déconnecte temporairement** : Les tablettes et la TV affichent le bandeau ambre du mode aperçu. Les données saisies continuent d'être mémorisées localement dans la mémoire du navigateur sans être perdues.
-- **Dès que le Wi-Fi revient** : La connexion WebSocket se rétablit automatiquement sous 1 seconde et synchronise les états.
+- **Dès que le Wi-Fi revient** : La connexion est retentée automatiquement, sans limite de tentatives. Le délai dépend du réseau. Les points et fautes locaux ne sont pas remplacés par les données de reconnexion.
 - **Si le PC s'éteint brutalement** : Au redémarrage, le fichier `tournament_data.json` contient l'état de la toute dernière action enregistrée. De plus, les archives du dossier `backups/` permettent de recharger le tournoi exactement au début de n'importe quelle session passée.
 
 ---
@@ -584,9 +640,9 @@ L'application utilise un système de stockage à quatre niveaux :
 
 Cette section recense les différences identifiées entre les textes d'aide de l'application (`HelpGuide.tsx`), le comportement programmé dans le code source et ce qui reste à valider sur le terrain.
 
-### A. Ce qui est confirmé et pleinement opérationnel dans le code
-1. **La règle officielle des points en poule** : Le code applique rigoureusement 3 points pour une victoire, 2 points pour un match nul, 1 point pour une défaite et 0 point pour un forfait (confirmé dans `standingsLogic.ts`).
-2. **Le conteneur TV fixe 1920×1080** : La mise à l'échelle automatique par `transform: scale` est bien active et garantit un affichage sans débordement (confirmé dans `TVDisplay.tsx`).
+### A. Comportements présents dans le code et limites des vérifications
+1. **Le calcul actuel des points en poule** : Le code applique rigoureusement 3 points pour une victoire, 2 points pour un match nul, 1 point pour une défaite et 0 point pour un forfait (confirmé dans `standingsLogic.ts`).
+2. **Le conteneur TV fixe 1920×1080** : La mise à l'échelle automatique par `transform: scale` est bien active et adapte le cadre à la fenêtre ; vérifier la lisibilité sur la TV réelle (confirmé dans `TVDisplay.tsx`).
 3. **La protection contre l'écrasement des scores** : Le serveur fusionne les matchs et refuse d'écraser un match terminé par un statut non terminé (confirmé dans `server.ts`).
 4. **Les copies de secours** : Les changements sur le réseau local sont envoyés au serveur par WebSocket, puis enregistrés sur le disque. Le navigateur conserve en parallèle une copie locale dans `IndexedDB` (confirmé dans `TournamentContext.tsx` et `server.ts`).
 5. **Le bonus féminin 3x3** : Les règles (+1 pt pour 1 femme, +2 pts pour 2 femmes ou plus) sont bien programmées et affichées en rappel visuel orange (confirmé dans `TeamManager.tsx` et `CourtView.tsx`).
@@ -594,12 +650,12 @@ Cette section recense les différences identifiées entre les textes d'aide de l
 7. **Phases finales** : Le tableau crée la finale et la petite finale à partir des deux demi-finales. Le mode manuel prépare les tours à remplir et garde les choix séparés par catégorie.
 8. **Démarrage Windows** : Le paquet contient un serveur de production séparé de l'écran. Le programme empaqueté le démarre et attend sa réponse avant d'afficher l'application.
 
-Ces trois points ont des tests automatiques. La compilation et l'essai du serveur empaqueté ont également été vérifiés sur la version de travail.
+La version du 22 octobre passe 18 tests automatiques et les commandes de préparation de l’application et du serveur. Cela ne remplace pas un essai du nouvel EXE sous Windows ni une répétition sur les appareils du gymnase.
 
 ### B. Écarts entre le guide d'aide (`HelpGuide.tsx`) et le code réel
 1. **Timing des alertes sonores du chronomètre** :
    - *Dans `HelpGuide.tsx` (ligne 247)* : Le texte indique que la corne de fin retentit à **10 secondes** de la fin et que le chrono se remet à zéro **2 secondes après la fin**.
-   - *Dans le code réel (`GlobalTimer.tsx`)* : Le sifflet de départ retentit à 0s après le décompte 5-4-3-2-1, l'alerte retentit à **60 secondes restantes** (1 minute), et la corne de brume de fin retentit exactement à **0 seconde** (fin du match). Il n'y a pas de corne à 10 secondes dans le code.
+   - *Dans le code réel (`GlobalTimer.tsx`)* : Le décompte visuel dure 5 secondes, puis le sifflet est lu et le chrono démarre à la fin de sa lecture. L’alerte d’une minute est prévue à **60 secondes restantes** et la lecture du son de fin à **10 secondes restantes**. L’échéance officielle termine le match à zéro. Le chrono reste à zéro jusqu’à Start, Reset ou changement de session ; il ne revient plus automatiquement à la durée initiale après deux secondes.
 2. **Export Excel des feuilles de route** :
    - *Dans `HelpGuide.tsx` (ligne 378)* : Mention d'un bouton *« Exporter (.xlsx) »*.
    - *Dans le code (`TeamRoadmaps.tsx`)* : Le code génère une impression directe et une copie pour tableur Google Sheets/Excel via le presse-papier, mais ne télécharge pas un binaire natif `.xlsx` avec macro. L'utilisateur utilise principalement l'impression navigateur ou le collage direct.
@@ -673,3 +729,4 @@ Tous les fichiers de code du projet ont été inspectés intégralement pour la 
 - `components/TournamentConfig.tsx`
 
 *Aucun fichier utile n'a été ignoré ou laissé de côté.*
+

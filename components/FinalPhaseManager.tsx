@@ -89,6 +89,9 @@ const FinalPhaseManager: React.FC = () => {
     const finalMatches = state.finalMatches[selectedCategoryId] || [];
 
     const handleStartFinalPhase = () => {
+        const concerned = new Set(Object.keys(state.finalMatches));
+        const missing = state.matches.filter(m => m.status !== 'finished' && state.teams.some(t => t.id === m.team1Id && concerned.has(t.categoryId)));
+        if (missing.length && !window.confirm('Il manque des scores de poule :\n' + missing.map(m => `${state.teams.find(t => t.id === m.team1Id)?.name} / ${state.teams.find(t => t.id === m.team2Id)?.name} (session ${m.sessionNumber})`).join('\n') + '\nLes tableaux déjà créés ne seront pas recalculés. Continuer ?')) return;
         if (window.confirm("Voulez-vous lancer l'affichage TV des phases finales ? Les écrans TV basculeront sur les nouveaux matchs.")) {
             dispatch({ type: 'START_FINAL_PHASE' });
         }

@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - codex/fix-core-reliability
   pull_request:
     branches:
@@ -27,9 +28,12 @@ jobs:
         run: npm ci
       - name: Build the Windows app
         run: npm run build:windows
+      - name: Check tournament scenarios
+        run: npm test
       - name: Make the EXE available to download
         uses: actions/upload-artifact@v4
         with:
           name: Gestion-Tournois-Windows
           path: release_build/*.exe
           if-no-files-found: error
+

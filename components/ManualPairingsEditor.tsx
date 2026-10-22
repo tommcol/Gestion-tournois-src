@@ -78,6 +78,8 @@ const ManualPairingsEditor: React.FC<ManualPairingsEditorProps> = ({ categoryId,
     };
 
     const handleSaveChanges = () => {
+        if (!pairings.some(m => m.team1Id && m.team2Id)) { window.alert('Ajoute au moins un match avec deux équipes avant de sauvegarder.'); return; }
+        if (pairings.some(m => !m.team1Id || !m.team2Id) && !window.confirm('Certains matchs sont incomplets. Enregistrer quand même ?')) return;
         dispatch({ type: 'UPDATE_MANUAL_PAIRINGS', payload: { categoryId, matches: pairings } });
         onSave();
     };
@@ -141,3 +143,4 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({ currentTeamId, unassignedTe
 };
 
 export default ManualPairingsEditor;
+

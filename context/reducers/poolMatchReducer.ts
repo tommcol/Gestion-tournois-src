@@ -1,4 +1,5 @@
 
+import { validScore } from '../../utils/tournamentFlow';
 import { TournamentState, TournamentAction, Pool } from '../../types';
 import { generatePools, generateMatchesForPools, generateSwissMatches } from '../../utils/poolLogic';
 import { generateSchedule } from '../../utils/scheduleLogic';
@@ -83,6 +84,7 @@ export const poolMatchReducer = (state: TournamentState, action: TournamentActio
       };
     }
     case 'UPDATE_MATCH_SCORE': {
+      if (!validScore(action.payload.score1, action.payload.score2)) return state;
       const { matchId, score1, score2, isForfeit } = action.payload;
       const newMatches = state.matches.map(m =>
         m.id === matchId
@@ -99,3 +101,4 @@ export const poolMatchReducer = (state: TournamentState, action: TournamentActio
       return state;
   }
 };
+

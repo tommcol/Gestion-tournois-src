@@ -276,7 +276,7 @@ export const scheduleFinalMatches = (
     let allFinalMatches: { categoryId: string; match: FinalMatch }[] = [];
     Object.entries(finalMatchesByCategory).forEach(([categoryId, matches]) => {
         matches.forEach(match => {
-            allFinalMatches.push({ categoryId, match: { ...match, sessionNumber: undefined, court: undefined, status: 'pending' } });
+            allFinalMatches.push({ categoryId, match: { ...match } });
         });
     });
 
@@ -285,11 +285,15 @@ export const scheduleFinalMatches = (
     let currentSession = 1;
     
     for (const round of roundOrder) {
-        let matchesInRound = allFinalMatches.filter(m => m.match.round === round);
-        if (matchesInRound.length === 0) continue;
+        const existingRoundMatches = allFinalMatches.filter(m => m.match.round === round && m.match.sessionNumber && m.match.court);
+        let matchesInRound = allFinalMatches.filter(m => m.match.round === round && m.match.status !== 'finished' && !(m.match.sessionNumber && m.match.court));
+        if (matchesInRound.length === 0) {
+            currentSession = Math.max(currentSession, ...existingRoundMatches.map(m => (m.match.sessionNumber || 0) + 1));
+            continue;
+        }
 
         while (matchesInRound.length > 0) {
-            const courtsOccupied = new Set<number>();
+            const courtsOccupied = new Set<number>(allFinalMatches.filter(m => m.match.sessionNumber === currentSession && m.match.court).map(m => m.match.court!));
             const categoriesScheduledThisSession = new Set<string>();
             
             categories.forEach(cat => {
@@ -324,6 +328,7 @@ export const scheduleFinalMatches = (
             if (courtsOccupied.size === 0) break; 
             currentSession++;
         }
+        currentSession = Math.max(currentSession, ...existingRoundMatches.map(m => (m.match.sessionNumber || 0) + 1));
     }
 
     const result: { [categoryId: string]: FinalMatch[] } = {};
@@ -334,3 +339,4 @@ export const scheduleFinalMatches = (
 
     return result;
 };
+

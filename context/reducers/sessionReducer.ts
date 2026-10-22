@@ -51,7 +51,7 @@ export const sessionReducer = (state: TournamentState, action: TournamentAction)
         ...state,
         isFinalPhase: true,
         isTournamentStarted: true,
-        currentSession: 1,
+        currentSession: state.isFinalPhase ? state.currentSession : 1,
         finalMatches: scheduledFinalMatches,
       };
     }
@@ -86,3 +86,4 @@ export const sessionReducer = (state: TournamentState, action: TournamentAction)
       return state;
   }
 };
+

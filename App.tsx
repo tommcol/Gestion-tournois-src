@@ -1,3 +1,4 @@
+import OrganizerNotifications from './components/OrganizerNotifications';
 
 import React, { useState, useCallback, useEffect } from 'react';
 import TournamentConfig from './components/TournamentConfig';
@@ -160,6 +161,7 @@ const App: React.FC = () => {
           <span>Mode aperçu : données sur ce navigateur uniquement ; tablettes et TV non synchronisées</span>
         </div>
       )}
+      <OrganizerNotifications />
       <header className="bg-gray-900 text-white p-2 shadow-lg z-20 flex justify-between items-center shrink-0">
          {/* Left Section: Title and Mode Button - Can truncate */}
          <div className="flex items-center gap-3 pl-2 flex-1 min-w-0">
@@ -236,3 +238,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

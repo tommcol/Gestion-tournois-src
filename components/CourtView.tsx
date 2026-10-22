@@ -1,329 +1,148 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { ClockSnapshot } from '../utils/tournamentFlow';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTournamentContext } from '../context/TournamentContext';
-import { FinalMatch } from '../types';
+import { CourtSubmission } from '../types';
+import { generateId } from '../utils/id';
 
-interface CourtViewProps {
-    courtNumber: number;
+interface Draft extends CourtSubmission {
+  phase: 'waiting' | 'ready' | 'playing' | 'pending' | 'sent' | 'conflict' | 'ended';
+  remaining: number; endsAt?: number; running: boolean; overtime?: boolean;
+  overtimeReceived?: boolean; session: number; bonus1: number; bonus2: number;
 }
 
-const CourtView: React.FC<CourtViewProps> = ({ courtNumber }) => {
-    const { state, dispatch, socket } = useTournamentContext();
-    const { matches, teams, categories, pools, currentSession, finalMatches } = state;
+const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
+  const { state, socket, clock } = useTournamentContext();
+  const key = `src-court-draft-v1-${courtNumber}`;
+  const [draft, setDraft] = useState<Draft | null>(() => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } });
+  const draftRef = useRef(draft);
+  const [connected, setConnected] = useState(!!socket?.connected);
+  const [storageError, setStorageError] = useState(false);
+  const sending = useRef(false);
+  const save = useCallback((next: Draft | null) => {
+    draftRef.current = next;
+    try { localStorage.setItem(key, JSON.stringify(next)); setStorageError(false); } catch { setStorageError(true); }
+    setDraft(next);
+  }, [key]);
+  const available = state.isFinalPhase
+    ? Object.values(state.finalMatches).flat().find(m => m.court === courtNumber && m.isReady && m.status !== 'finished' && m.team1Id && m.team2Id)
+    : state.matches.find(m => m.court === courtNumber && m.sessionNumber === state.currentSession && m.status !== 'finished');
+  useEffect(() => {
+    const current = draftRef.current;
+    if (!available || current?.matchId === available.id) return;
+    // Un résultat non reçu reste affiché, même si le PC est passé à la suite.
+    if (current && current.phase !== 'sent') return;
+    const t1 = state.teams.find(t => t.id === available.team1Id);
+    const t2 = state.teams.find(t => t.id === available.team2Id);
+    const b1 = Math.min(2, t1?.womenCount || 0), b2 = Math.min(2, t2?.womenCount || 0);
+    save({ id: generateId(), matchId: available.id, court: courtNumber,
+      categoryId: 'categoryId' in available ? available.categoryId : undefined,
+      team1Name: t1?.name || 'Équipe 1', team2Name: t2?.name || 'Équipe 2', score1: b1, score2: b2,
+      fouls1: 0, fouls2: 0, bonus1: b1, bonus2: b2, phase: 'waiting', running: false,
+      remaining: state.timerDuration, session: state.currentSession });
+  }, [available?.id, state.currentSession, state.teams, state.timerDuration, courtNumber, save, draft?.phase]);
 
-    // Match en cours sur ce terrain
-    // D'abord chercher un match de poule
-    const poolMatch = matches.find(m =>
-        m.court === courtNumber &&
-        m.sessionNumber === currentSession &&
-        m.status === 'pending'
-    );
+  const submit = useCallback((automatic = false) => {
+    const current = draftRef.current;
+    if (!current || current.phase === 'sent' || current.phase === 'conflict') return;
+    if (current.categoryId && current.score1 === current.score2) { save({ ...current, phase: 'ended', running: false, endsAt: undefined, remaining: 0 }); return; }
+    const pending: Draft = { ...current, automatic: current.phase === 'pending' ? current.automatic : automatic, phase: 'pending', running: false, endsAt: undefined, remaining: 0 };
+    if (current.phase !== 'pending') save(pending);
+    if (!socket?.connected || sending.current) return;
+    sending.current = true;
+    socket.timeout(5000).emit('court_submit', pending, (err: unknown, response: { status: string; clock?: ClockSnapshot }) => {
+      sending.current = false;
+      const latest = draftRef.current;
+      if (err || !latest || latest.id !== pending.id) return;
+      if (response?.status === 'received') save({ ...latest, phase: 'sent' });
+      else if (response?.status === 'conflict') save({ ...latest, phase: 'conflict' });
+      else if (response?.status === 'tie') save({ ...latest, phase: 'ended' });
+      else if (response?.status === 'clock' && response.clock) {
+        const c = response.clock;
+        save({ ...latest, phase: 'playing', automatic: false, running: ['timer_start', 'timer_tick'].includes(c.type), endsAt: c.endsAt, remaining: c.endsAt ? Math.max(0, Math.ceil((c.endsAt - Date.now()) / 1000)) : c.payload?.timeLeft ?? latest.remaining });
+      }
+    });
+  }, [socket, save]);
 
-    // Sinon chercher un match de phase finale prêt sur ce terrain
-    const finalMatch = !poolMatch
-        ? Object.values(finalMatches)
-            .flat()
-            .find(m =>
-                m.court === courtNumber &&
-                m.isReady === true &&
-                m.status !== 'finished'
-            )
-        : undefined;
+  useEffect(() => {
+    if (!socket) return;
+    const connect = () => { setConnected(true); sending.current = false; };
+    const disconnect = () => { setConnected(false); sending.current = false; };
+    socket.on('connect', connect); socket.on('disconnect', disconnect);
+    return () => { socket.off('connect', connect); socket.off('disconnect', disconnect); };
+  }, [socket]);
 
-    const currentMatch = poolMatch || finalMatch || null;
-    const isFinalPhaseMatch = !poolMatch && !!finalMatch;
+  // Restaure le chrono officiel sans toucher aux points ni aux fautes.
+  useEffect(() => {
+    const current = draftRef.current;
+    if (!current || !clock?.matchIds?.includes(current.matchId) || ['sent', 'pending', 'conflict'].includes(current.phase)) return;
+    if (clock.type === 'timer_end') {
+      if (!current.overtime) submit(true);
+      return;
+    }
+    if (['timer_start', 'timer_tick'].includes(clock.type) && !current.overtime) {
+      const remaining = clock.endsAt ? Math.max(0, Math.ceil((clock.endsAt - Date.now()) / 1000)) : clock.payload?.timeLeft ?? current.remaining;
+      save({ ...current, phase: 'playing', remaining, running: true, endsAt: clock.endsAt });
+    } else if (clock.type === 'timer_pause' || clock.type === 'timer_reset') {
+      save({ ...current, running: false, endsAt: undefined, remaining: clock.type === 'timer_reset' ? state.timerDuration : clock.payload?.timeLeft ?? current.remaining });
+    }
+  }, [clock, draft?.matchId, state.timerDuration, save, submit]);
 
-    const team1 = teams.find(t => t.id === currentMatch?.team1Id);
-    const team2 = teams.find(t => t.id === currentMatch?.team2Id);
-
-    // Bonus féminin
-    const bonus1 = !team1?.womenCount ? 0 : team1.womenCount >= 2 ? 2 : 1;
-    const bonus2 = !team2?.womenCount ? 0 : team2.womenCount >= 2 ? 2 : 1;
-
-    // States locaux
-    const [courtState, setCourtState] = useState<'waiting' | 'ready' | 'match' | 'end'>('waiting');
-    const [score1, setScore1] = useState(bonus1);
-    const [score2, setScore2] = useState(bonus2);
-    const [fouls1, setFouls1] = useState(0);
-    const [fouls2, setFouls2] = useState(0);
-    const [chronoSec, setChronoSec] = useState(state.timerDuration || 480);
-    const [chronoRunning, setChronoRunning] = useState(false);
-
-    // Reset quand le match change
-    useEffect(() => {
-        setScore1(bonus1);
-        setScore2(bonus2);
-        setFouls1(0);
-        setFouls2(0);
-        setCourtState('waiting');
-        setChronoSec(state.timerDuration || 480);
-        setChronoRunning(false);
-    }, [currentMatch?.id, bonus1, bonus2, state.timerDuration]);
-
-    // Chrono
-    useEffect(() => {
-        if (!chronoRunning) return;
-        const interval = setInterval(() => {
-            setChronoSec(prev => {
-                if (prev <= 1) {
-                    setChronoRunning(false);
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-        return () => clearInterval(interval);
-    }, [chronoRunning]);
-
-    // Écouter le démarrage du chrono depuis l'admin via Socket.io
-    useEffect(() => {
-        const handleAudioEvent = (e: Event) => {
-            const { type, payload } = (e as CustomEvent).detail;
-
-            if (type === 'timer_start') {
-                setChronoSec(payload?.timeLeft || state.timerDuration || 480);
-                setChronoRunning(true);
-                setCourtState('match');
-            }
-            if (type === 'timer_pause') {
-                setChronoRunning(false);
-            }
-            if (type === 'timer_reset') {
-                setChronoRunning(false);
-                setChronoSec(state.timerDuration || 480);
-                setCourtState('waiting');
-            }
-            if (type === 'timer_tick') {
-                // Synchronisation du chrono avec l'admin
-                setChronoSec(payload?.timeLeft ?? 0);
-            }
-        };
-
-        window.addEventListener('tournament_audio_event', handleAudioEvent);
-        return () => window.removeEventListener('tournament_audio_event', handleAudioEvent);
-    }, [state.timerDuration]);
-
-    // Envoyer signal "prêt" à l'admin
-    const handleReady = () => {
-        socket?.emit('court_ready', { court: courtNumber, matchId: currentMatch?.id });
-        setCourtState('ready');
-    };
-
-    // Envoyer le score final
-    const handleSendScore = () => {
-        if (!currentMatch) return;
-        if (!window.confirm(`Confirmer le score ${score1} - ${score2} ?`)) return;
-
-        if (isFinalPhaseMatch) {
-            // Match de phase finale
-            const fm = finalMatch!;
-            dispatch({
-                type: 'UPDATE_FINAL_MATCH_SCORE',
-                payload: {
-                    categoryId: fm.categoryId,
-                    matchId: fm.id,
-                    score1,
-                    score2,
-                }
-            });
-            // Réinitialiser isReady
-            dispatch({
-                type: 'SET_FINAL_MATCH_READY',
-                payload: {
-                    categoryId: fm.categoryId,
-                    matchId: fm.id,
-                    isReady: false
-                }
-            });
-        } else {
-            // Match de poule (code existant)
-            dispatch({
-                type: 'UPDATE_MATCH_SCORE',
-                payload: {
-                    matchId: currentMatch.id,
-                    score1,
-                    score2,
-                    poolId: (currentMatch as any).poolId,
-                }
-            });
-        }
-
-        setCourtState('end');
-    };
-
-    // Envoyer le score en temps réel à la TV
-    useEffect(() => {
-        if (!socket || !currentMatch || courtState !== 'match') return;
-        socket.emit('live_score', {
-            court: courtNumber,
-            matchId: currentMatch.id,
-            score1,
-            score2,
-            team1Name: team1?.name,
-            team2Name: team2?.name,
+  useEffect(() => {
+    const tick = () => {
+      const current = draftRef.current;
+      if (!current) return;
+      if (current.running && current.endsAt) {
+        const remaining = Math.max(0, Math.ceil((current.endsAt - Date.now()) / 1000));
+        if (!remaining) submit(true);
+        else if (remaining !== current.remaining) save({ ...current, remaining });
+      }
+      if (['pending', 'conflict'].includes(current.phase) && socket?.connected) {
+        if (current.phase === 'conflict') save({ ...current, phase: 'pending' });
+        submit();
+      }
+      if (current.overtime && !current.overtimeReceived && socket?.connected) {
+        socket.timeout(3000).emit('court_overtime', current, (err: unknown, response: { status: string }) => {
+          const latest = draftRef.current;
+          if (!err && response?.status === 'received' && latest?.id === current.id) save({ ...latest, overtimeReceived: true });
         });
-    }, [score1, score2, socket, currentMatch, courtState, courtNumber, team1?.name, team2?.name]);
-
-    // Helpers
-    const changeScore = (team: 1 | 2, delta: number) => {
-        const min = team === 1 ? bonus1 : bonus2;
-        if (team === 1) setScore1(prev => Math.max(min, prev + delta));
-        else setScore2(prev => Math.max(min, prev + delta));
+      }
     };
+    tick(); const timer = setInterval(tick, 1000); return () => clearInterval(timer);
+  }, [socket, save, submit]);
 
-    const changeFoul = (team: 1 | 2, delta: number) => {
-        if (team === 1) setFouls1(prev => Math.min(13, Math.max(0, prev + delta)));
-        else setFouls2(prev => Math.min(13, Math.max(0, prev + delta)));
-    };
+  useEffect(() => {
+    if (!draft || !socket?.connected || !['playing', 'ended'].includes(draft.phase)) return;
+    socket.emit('live_score', { ...draft });
+  }, [draft?.score1, draft?.score2, draft?.fouls1, draft?.fouls2, draft?.phase, socket, connected]);
 
-    const getFoulStyle = (n: number) => {
-        if (n <= 6) return { color: 'inherit', alert: '', alertColor: '' };
-        if (n <= 9) return { color: '#ea580c', alert: '2 lancers-francs', alertColor: '#ea580c' };
-        return { color: '#dc2626', alert: '2 lancers-francs + possession', alertColor: '#dc2626' };
-    };
-
-    const formatTime = (sec: number) => {
-        const m = Math.floor(sec / 60);
-        const s = sec % 60;
-        return `${m}:${s < 10 ? '0' : ''}${s}`;
-    };
-
-    const pool = pools.find(p => p.id === (currentMatch as any)?.poolId);
-    const category = isFinalPhaseMatch ? categories.find(c => c.id === (currentMatch as FinalMatch)?.categoryId) : categories.find(c => (currentMatch as any)?.poolId?.startsWith(c.id));
-    
-    const roundNames: Record<FinalMatch['round'], string> = { roundOf32: '16èmes de finale', roundOf16: '8èmes de finale', quarterFinal: 'Quarts de finale', semiFinal: 'Demi-finales', thirdPlace: '3ème place', final: 'Finale' };
-
-    // RENDU
-    return (
-        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col font-sans max-w-[500px] mx-auto shadow-xl">
-            {/* HEADER */}
-            <div className="bg-blue-700 text-white p-4 flex justify-between items-center shrink-0 shadow-md">
-                <div>
-                    <div className="text-xs opacity-80">Session {currentSession}</div>
-                    <div className="text-xl font-bold">Terrain {courtNumber}</div>
-                    {isFinalPhaseMatch && (
-                        <div style={{ fontSize: '11px', opacity: 0.8 }}>
-                            {roundNames[(currentMatch as FinalMatch).round] || 'Phase finale'}
-                        </div>
-                    )}
-                </div>
-                <div className={`text-3xl font-mono font-bold ${chronoSec <= 60 ? 'text-yellow-400' : 'text-white'}`}>
-                    {formatTime(chronoSec)}
-                </div>
-            </div>
-
-            <div className="p-4 flex flex-col gap-4 overflow-y-auto">
-
-                {/* PAS DE MATCH */}
-                {!currentMatch && (
-                    <div className="text-center py-12 text-gray-500">
-                        <div className="text-lg mb-2">Aucun match prévu</div>
-                        <div className="text-sm">Terrain {courtNumber} — Session {currentSession}</div>
-                    </div>
-                )}
-
-                {/* EN ATTENTE */}
-                {currentMatch && courtState === 'waiting' && (
-                    <>
-                        <div className="text-center text-sm text-gray-500 font-medium">
-                            {category?.name}{pool ? ` — Poule ${pools.filter(p => p.id.startsWith(category?.id || '')).indexOf(pool) + 1}` : ''}
-                        </div>
-                        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 text-center shadow-sm">
-                            <div className="text-xl font-bold dark:text-gray-100">
-                                {team1?.name}{bonus1 > 0 && <span className="text-orange-600 text-sm italic ml-1"> (+{bonus1})</span>}
-                            </div>
-                            <div className="text-sm text-gray-400 my-3 uppercase tracking-wider font-semibold">contre</div>
-                            <div className="text-xl font-bold dark:text-gray-100">
-                                {team2?.name}{bonus2 > 0 && <span className="text-orange-600 text-sm italic ml-1"> (+{bonus2})</span>}
-                            </div>
-                        </div>
-                        <div className="text-sm text-gray-500 text-center italic">
-                            Cliquez quand les deux équipes sont prêtes
-                        </div>
-                        <button onClick={handleReady} className="p-5 bg-blue-600 text-white rounded-xl text-xl font-bold shadow-lg hover:bg-blue-700 active:scale-95 transition-all">
-                            Équipes prêtes
-                        </button>
-                    </>
-                )}
-
-                {/* EN ATTENTE AUTRES TERRAINS */}
-                {currentMatch && courtState === 'ready' && (
-                    <div className="text-center py-12 flex flex-col items-center">
-                        <div className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-2">
-                            Signal envoyé
-                        </div>
-                        <div className="text-sm text-gray-500 mb-6">
-                            En attente du lancement par l'admin...
-                        </div>
-                        <div className="text-5xl animate-bounce">⏳</div>
-                    </div>
-                )}
-
-                {/* MATCH EN COURS */}
-                {currentMatch && courtState === 'match' && (
-                    <div className="flex flex-col gap-3">
-                        {/* SCORES */}
-                        <div className="grid grid-cols-2 gap-3">
-                            {[{name: team1?.name, score: score1, bonus: bonus1, fouls: fouls1, team: 1 as const},
-                              {name: team2?.name, score: score2, bonus: bonus2, fouls: fouls2, team: 2 as const}]
-                            .map((t, i) => (
-                                <div key={i} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center shadow-sm">
-                                    <div className="text-sm font-bold truncate dark:text-gray-100">
-                                        {t.name}
-                                    </div>
-                                    {t.bonus > 0 && <div className="text-[10px] text-orange-600 font-bold">+{t.bonus} bonus</div>}
-                                    <div className="flex items-center justify-center gap-3 my-2">
-                                        <button onClick={() => changeScore(t.team, -1)} className="w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-2xl font-bold dark:text-gray-100 flex items-center justify-center shadow-sm">−</button>
-                                        <span className="text-4xl font-bold min-w-[50px] dark:text-gray-100">{t.score}</span>
-                                        <button onClick={() => changeScore(t.team, 1)} className="w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-2xl font-bold dark:text-gray-100 flex items-center justify-center shadow-sm">+</button>
-                                    </div>
-                                    <div className="text-[10px] text-gray-400">min. {t.bonus}</div>
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* FAUTES */}
-                        <div className="grid grid-cols-2 gap-3">
-                            {[{name: team1?.name, fouls: fouls1, team: 1 as const},
-                              {name: team2?.name, fouls: fouls2, team: 2 as const}]
-                            .map((t, i) => {
-                                const fs = getFoulStyle(t.fouls);
-                                return (
-                                    <div key={i} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-center shadow-sm">
-                                        <div className="text-[10px] text-gray-500 mb-2 truncate uppercase font-bold">Fautes {t.name}</div>
-                                        <div className="flex items-center justify-center gap-3 mb-1">
-                                            <button onClick={() => changeFoul(t.team, -1)} className="w-9 h-9 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-xl font-bold dark:text-gray-100 flex items-center justify-center shadow-sm">−</button>
-                                            <span className="text-3xl font-bold min-w-[40px]" style={{ color: fs.color }}>{t.fouls}</span>
-                                            <button onClick={() => changeFoul(t.team, 1)} className="w-9 h-9 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-xl font-bold dark:text-gray-100 flex items-center justify-center shadow-sm">+</button>
-                                        </div>
-                                        {fs.alert && <div className="text-[10px] font-bold" style={{ color: fs.alertColor }}>{fs.alert}</div>}
-                                    </div>
-                                );
-                            })}
-                        </div>
-
-                        <button onClick={handleSendScore} className="w-full p-4 bg-green-600 text-white rounded-xl text-lg font-bold shadow-lg hover:bg-green-700 active:scale-95 transition-all">
-                            Envoyer le score
-                        </button>
-                    </div>
-                )}
-
-                {/* FIN */}
-                {courtState === 'end' && (
-                    <div className="text-center py-6">
-                        <div className="text-5xl mb-4">✅</div>
-                        <div className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-1">Score envoyé</div>
-                        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mt-4 shadow-md">
-                            <div className="text-5xl font-bold text-blue-600">{score1} / {score2}</div>
-                            <div className="text-xs text-gray-400 mt-2 uppercase tracking-widest font-bold">score final</div>
-                        </div>
-                        <div className="text-sm text-gray-500 mt-6 italic">
-                            En attente du prochain match...
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+  const change = (field: 'score1' | 'score2' | 'fouls1' | 'fouls2', delta: number) => {
+    const current = draftRef.current;
+    if (!current || !['playing', 'ended'].includes(current.phase) || (current.phase === 'ended' && current.categoryId && !current.overtime)) return;
+    const min = field === 'score1' ? current.bonus1 : field === 'score2' ? current.bonus2 : 0;
+    save({ ...current, [field]: Math.max(min, Math.min(field.startsWith('fouls') ? 13 : Number.MAX_SAFE_INTEGER, current[field] + delta)) });
+  };
+  const locked = !!draft && ['pending', 'sent', 'conflict'].includes(draft.phase);
+  const time = draft?.remaining ?? state.timerDuration;
+  return <div className="min-h-screen bg-gray-100 dark:bg-gray-900 max-w-[500px] mx-auto flex flex-col">
+    <header className="bg-blue-700 text-white p-4 flex justify-between items-center"><div><div className="text-xs">Session {draft?.session || state.currentSession}</div><h1 className="text-xl font-bold">Terrain {courtNumber}</h1></div><div className="text-3xl font-mono font-bold">{draft?.overtime ? 'Prolongation' : `${Math.floor(time / 60)}:${String(time % 60).padStart(2, '0')}`}</div></header>
+    <div role="status" className={`p-3 text-center text-sm font-bold ${connected ? 'bg-green-100 text-green-900' : 'bg-amber-100 text-amber-900'}`}>{connected ? 'Connecté au PC' : 'Hors connexion — gardez cette page ouverte. Les points et fautes restent sur cette tablette.'}</div>
+    {storageError && <p role="alert" className="p-3 bg-red-100 text-red-900">La tablette ne peut pas garder les données. Notez le score et les fautes sur papier avant de fermer cette page.</p>}
+    {!draft ? <p className="p-8 text-center">Aucun match prévu sur ce terrain.</p> : <main className="p-4 space-y-4">
+      {draft.phase === 'waiting' && <button className="w-full p-5 rounded-xl bg-blue-600 text-white text-xl font-bold" onClick={() => { socket?.emit('court_ready', { court: courtNumber, matchId: draft.matchId }); save({ ...draft, phase: 'ready' }); }}>Équipes prêtes</button>}
+      {draft.phase === 'ready' && <p className="text-center">En attente du lancement par l’organisateur…</p>}
+      <div className="grid grid-cols-2 gap-3">{([1, 2] as const).map(n => <div key={n} className="bg-white dark:bg-gray-800 rounded-xl p-3 text-center shadow-sm">
+        <h2 className="font-bold break-words">{n === 1 ? draft.team1Name : draft.team2Name}</h2>
+        {(n === 1 ? draft.bonus1 : draft.bonus2) > 0 && <p className="text-xs text-orange-600">Bonus initial : +{n === 1 ? draft.bonus1 : draft.bonus2}</p>}
+        <p className="text-5xl font-bold my-4">{n === 1 ? draft.score1 : draft.score2}</p>
+        {!locked && ['playing', 'ended'].includes(draft.phase) && <div className="flex justify-center gap-4"><button aria-label={`Retirer un point équipe ${n}`} className="p-3 border rounded-lg text-2xl" onClick={() => change(n === 1 ? 'score1' : 'score2', -1)}>−</button><button aria-label={`Ajouter un point équipe ${n}`} className="p-3 border rounded-lg text-2xl" onClick={() => change(n === 1 ? 'score1' : 'score2', 1)}>+</button></div>}
+        <p className="mt-4">Fautes : <strong>{n === 1 ? draft.fouls1 : draft.fouls2}</strong></p>
+        {!locked && ['playing', 'ended'].includes(draft.phase) && <div className="flex justify-center gap-4 mt-2"><button aria-label={`Retirer une faute équipe ${n}`} className="p-3 border rounded-lg" onClick={() => change(n === 1 ? 'fouls1' : 'fouls2', -1)}>−</button><button aria-label={`Ajouter une faute équipe ${n}`} className="p-3 border rounded-lg" onClick={() => change(n === 1 ? 'fouls1' : 'fouls2', 1)}>+</button></div>}
+        {(n === 1 ? draft.fouls1 : draft.fouls2) >= 7 && <p className="text-orange-600 text-xs mt-2">{(n === 1 ? draft.fouls1 : draft.fouls2) >= 10 ? '2 lancers-francs + possession' : '2 lancers-francs'}</p>}
+      </div>)}</div>
+      {draft.categoryId && draft.score1 === draft.score2 && !locked && ['playing', 'ended'].includes(draft.phase) && <div className="bg-amber-100 text-amber-950 p-4 rounded-xl"><p>Égalité : le score ne peut pas être validé en phase finale.</p><button disabled={draft.remaining > 0} className="font-bold underline mt-2 disabled:opacity-40" onClick={() => save({ ...draft, overtime: true, phase: 'playing', running: false, endsAt: undefined, remaining: 0 })}>Prolongation — prévenir l’organisateur</button></div>}
+      {!locked && ['playing', 'ended'].includes(draft.phase) && <button className="w-full p-4 bg-green-600 text-white rounded-xl font-bold disabled:opacity-40" disabled={!!draft.categoryId && draft.score1 === draft.score2} onClick={() => { if (window.confirm(`Confirmer le score ${draft.score1} - ${draft.score2} ?`)) submit(); }}>Envoyer le score</button>}
+      {locked && <div className="text-center rounded-xl bg-white dark:bg-gray-800 p-5" role="status"><p className="text-xl font-bold">{draft.phase === 'sent' ? 'Score reçu par le PC ✓' : draft.phase === 'conflict' ? 'Deux scores différents : l’organisateur doit choisir.' : 'Score conservé — en attente de réception par le PC.'}</p><p className="mt-3">{draft.phase === 'sent' ? 'Seul l’organisateur peut le corriger.' : 'Montrez cet écran à l’organisateur si la connexion ne revient pas.'}</p></div>}
+    </main>}
+  </div>;
 };
-
 export default CourtView;

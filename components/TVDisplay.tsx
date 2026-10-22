@@ -1,3 +1,4 @@
+import { tvMoment, tvSettings, tvSessions } from '../utils/tournamentFlow';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTournament } from '../context/TournamentContext';
@@ -23,13 +24,15 @@ interface TVDisplayProps {
 }
 
 const TVDisplay: React.FC = () => {
-    const { state, isLoaded, socket } = useTournament();
-    const { matches, finalMatches, isPoolStageFinished, isFinalPhase, isTournamentStarted, sponsors, currentSession, teams, categories, pools, matchDisplayDuration, sponsorDisplayDuration, tvConfig } = state;
+    const { state, isLoaded, socket, clock } = useTournament();
+    const { matches, finalMatches, isPoolStageFinished, isFinalPhase, isTournamentStarted, sponsors, currentSession, teams, categories, pools, matchDisplayDuration, sponsorDisplayDuration } = state;
+    const moment = tvMoment(state, clock);
+    const tvConfig = tvSettings(state, moment);
 
     const allFinalMatches = useMemo(() => {
         return Object.values(finalMatches).flat();
     }, [finalMatches]);
-    
+
     // --- ÉTAT DU CYCLE D'AFFICHAGE ---
     const [viewMode, setViewMode] = useState<'matches' | 'results' | 'standings' | 'sponsor'>(isTournamentStarted ? 'matches' : 'sponsor');
     const [lastMainMode, setLastMainMode] = useState<'matches' | 'results' | 'standings'>('matches');
@@ -72,6 +75,13 @@ const TVDisplay: React.FC = () => {
         }, 1000);
         return () => clearInterval(interval);
     }, [pauseTimeLeft]);
+
+    useEffect(() => {
+        if (!clock || clock.session !== currentSession || clock.finals !== isFinalPhase) return;
+        setIsTimerActive(['timer_start', 'timer_tick'].includes(clock.type));
+        setIsPreStarting(clock.type === 'prestart_begin');
+        setPauseTimeLeft(clock.type === 'timer_end' && clock.breakEndsAt ? Math.max(0, Math.ceil((clock.breakEndsAt - Date.now()) / 1000)) : null);
+    }, [clock, currentSession, isFinalPhase]);
 
     const formatPause = (sec: number) => {
         const m = Math.floor(sec / 60);
@@ -145,7 +155,7 @@ const TVDisplay: React.FC = () => {
     // La session est considérée comme "lancée" si le chrono tourne
     const isCurrentSessionLaunched = useMemo(() => isTimerActive, [isTimerActive]);
 
-    const isCurrentSessionFinished = useMemo(() => 
+    const isCurrentSessionFinished = useMemo(() =>
         currentSessionMatches.length > 0 && currentSessionMatches.every(m => m.status === 'finished'),
     [currentSessionMatches]);
 
@@ -154,45 +164,28 @@ const TVDisplay: React.FC = () => {
         if (isFinalPhase) return []; // Le tableau utilise ses propres données (allFinalMatches)
         if (isPoolStageFinished) return [];
 
-        let targetSession = currentSession;
-        
-        if (currentSession === 1) {
-            // Point 2 & 3 : Session 1 si chrono arrêté, Session 2 si chrono lancé
-            targetSession = isCurrentSessionLaunched ? 2 : 1;
-        } else {
-            // Point 4 : Rythme de croisière, on affiche toujours la session N+1
-            targetSession = currentSession + 1;
-        }
-
+        const targetSession = tvSessions(state, clock).next;
         return matches.filter(m => m.sessionNumber === targetSession);
-    }, [matches, isFinalPhase, isPoolStageFinished, currentSession, isCurrentSessionLaunched]);
+    }, [matches, isFinalPhase, isPoolStageFinished, currentSession, clock]);
 
     const maxSession = useMemo(() => {
-        const allMatches = isFinalPhase 
-          ? Object.values(finalMatches).flat() 
+        const allMatches = isFinalPhase
+          ? Object.values(finalMatches).flat()
           : matches;
         return Math.max(0, ...allMatches.map(m => m.sessionNumber || 0));
     }, [matches, finalMatches, isFinalPhase]);
 
     const resultsData = useMemo(() => {
         if (isFinalPhase) return { matches: [], sessionNumber: 0 };
-        
-        let targetSession = -1;
-        if (isPoolStageFinished) {
-            // Point 5: Derniers résultats de poule
-            const poolMatches = matches.filter(m => m.round === 'Pool' || m.round === 'Swiss');
-            targetSession = Math.max(0, ...poolMatches.map(m => m.sessionNumber || 0));
-        } else if (currentSession > 1) {
-            // Point 4: Session N-1
-            targetSession = currentSession - 1;
-        }
+
+        const targetSession = tvSessions(state, clock).results;
 
         if (targetSession <= 0) return { matches: [], sessionNumber: 0 };
         return {
             matches: matches.filter(m => m.sessionNumber === targetSession),
             sessionNumber: targetSession
         };
-    }, [matches, isFinalPhase, isPoolStageFinished, currentSession]);
+    }, [matches, isFinalPhase, isPoolStageFinished, currentSession, clock]);
 
     const isLastPoolSession = useMemo(() => {
         if (isPoolStageFinished || isFinalPhase) return false;
@@ -208,7 +201,7 @@ const TVDisplay: React.FC = () => {
 
     const finalPhaseCategories = useMemo(() => {
         if (!isFinalPhase) return [];
-        return categories.filter(cat => 
+        return categories.filter(cat =>
             allFinalMatches.some(m => m.categoryId === cat.id)
         );
     }, [isFinalPhase, categories, allFinalMatches]);
@@ -217,7 +210,7 @@ const TVDisplay: React.FC = () => {
         if (isFinalPhase) return finalPhaseCategories.length || 1;
         return Math.ceil(displayMatches.length / MATCHES_PER_PAGE) || 1;
     }, [displayMatches.length, isFinalPhase, finalPhaseCategories.length]);
-    
+
     const resultsPagesCount = useMemo(() => {
         return Math.ceil(resultsData.matches.length / MATCHES_PER_PAGE) || 1;
     }, [resultsData.matches.length]);
@@ -244,15 +237,15 @@ const TVDisplay: React.FC = () => {
     }, [matches, isFinalPhase, isPoolStageFinished]);
 
     const hasMatches = isTournamentStarted && (
-        isFinalPhase 
-            ? allFinalMatches.length > 0 
+        isFinalPhase
+            ? allFinalMatches.length > 0 && tvConfig.showNextMatches
             : (!isPoolStageFinished && displayMatches.length > 0 && (tvConfig?.showNextMatches ?? true))
     );
-    
+
     const hasResults = isTournamentStarted && !isFinalPhase && resultsData.matches.length > 0 && (tvConfig?.showResults ?? true);
-    
+
     const hasStandings = isTournamentStarted && !isFinalPhase && pools.length > 0 && (tvConfig?.showStandings ?? true);
-    
+
     const hasSponsors = sponsors.length > 0 && (tvConfig?.showSponsors ?? true);
 
     // --- LOGIQUE D'ALTERNANCE ---
@@ -272,7 +265,7 @@ const TVDisplay: React.FC = () => {
 
             // Sinon (on vient de sponsor ou on n'en a pas), on cherche le mode principal suivant
             const mainMode = currentMode === 'sponsor' ? lastMainMode : currentMode as 'matches' | 'results' | 'standings';
-            
+
             if (mainMode === 'matches') {
                 if (hasResults) return 'results';
                 if (hasStandings) return 'standings';
@@ -302,13 +295,13 @@ const TVDisplay: React.FC = () => {
             } else {
                 // 2. Passer au mode suivant si plus de pages
                 const nextMode = getNextMode(viewMode);
-                
+
                 // Sauvegarder le mode principal si on le quitte
                 if (viewMode !== 'sponsor') {
                     setLastMainMode(viewMode);
                 } else {
                     // Si on quitte le mode sponsor, on passe au sponsor suivant pour la prochaine fois
-                    setSponsorIndex(prev => (prev + 1) % sponsors.length);
+                    setSponsorIndex(prev => sponsors.length ? (prev + 1) % sponsors.length : 0);
                 }
 
                 setViewMode(nextMode);
@@ -320,6 +313,15 @@ const TVDisplay: React.FC = () => {
         return () => { if (timer) clearTimeout(timer); };
     }, [viewMode, pageIndex, sponsorIndex, hasMatches, hasResults, hasStandings, hasSponsors, currentDurationMs, matchesPagesCount, resultsPagesCount, standingsPagesCount, sponsors.length]);
 
+    // Une case décochée ne doit pas laisser un écran vide jusqu'au prochain cycle.
+    useEffect(() => {
+        const available = { matches: hasMatches, results: hasResults, standings: hasStandings, sponsor: hasSponsors };
+        if (!available[viewMode]) {
+            const next = hasMatches ? 'matches' : hasResults ? 'results' : hasStandings ? 'standings' : 'sponsor';
+            setViewMode(next); setPageIndex(0);
+        }
+    }, [hasMatches, hasResults, hasStandings, hasSponsors, viewMode]);
+
     // Reset to matches view when session changes
     useEffect(() => {
         if (hasMatches) {
@@ -329,7 +331,7 @@ const TVDisplay: React.FC = () => {
     }, [currentSession]);
 
     const getTeam = (teamId: string) => teams.find(t => t.id === teamId);
-    
+
     const showReferee = true;
     const showScorer = true;
 
@@ -363,7 +365,7 @@ const TVDisplay: React.FC = () => {
     if (!audioUnlocked) {
         return (
             <div className="h-screen w-screen bg-gray-900 flex items-center justify-center text-white p-8">
-                <button 
+                <button
                     onClick={unlockAudio}
                     className="bg-blue-600 hover:bg-blue-700 text-white text-4xl font-black py-12 px-24 rounded-3xl shadow-2xl transform transition hover:scale-105 uppercase tracking-tighter"
                 >
@@ -384,10 +386,10 @@ const TVDisplay: React.FC = () => {
             </div>
         );
     }
-    
+
     return (
          <div className="w-screen h-screen bg-black overflow-hidden flex items-center justify-center select-none">
-            <div 
+            <div
                 style={{
                     width: '1920px',
                     height: '1080px',
@@ -402,18 +404,18 @@ const TVDisplay: React.FC = () => {
                             {viewMode === 'matches' && hasMatches ? (
                                 <div className="p-8 h-full">
                                     {isFinalPhase ? (
-                                        <TVBracket 
+                                        <TVBracket
                                             category={finalPhaseCategories[pageIndex % finalPhaseCategories.length]}
                                             finalMatches={allFinalMatches}
                                             teams={teams}
                                         />
                                     ) : (
-                                        <NextSessionMatches 
-                                            key={`matches-session-${isCurrentSessionLaunched ? currentSession + 1 : currentSession}`} 
-                                            matches={[...displayMatches].sort((a,b) => (a.court || 99) - (b.court || 99)) as any} 
-                                            teams={teams} 
-                                            categories={categories} 
-                                            sessionNumber={isCurrentSessionLaunched ? currentSession + 1 : currentSession} 
+                                        <NextSessionMatches
+                                            key={`matches-session-${isCurrentSessionLaunched ? currentSession + 1 : currentSession}`}
+                                            matches={[...displayMatches].sort((a,b) => (a.court || 99) - (b.court || 99)) as any}
+                                            teams={teams}
+                                            categories={categories}
+                                            sessionNumber={isCurrentSessionLaunched ? currentSession + 1 : currentSession}
                                             getTeam={getTeam}
                                             page={pageIndex}
                                             showReferee={showReferee}
@@ -423,7 +425,7 @@ const TVDisplay: React.FC = () => {
                                 </div>
                             ) : viewMode === 'results' && hasResults ? (
                                 <div className="p-8 h-full">
-                                    <PreviousSessionResults 
+                                    <PreviousSessionResults
                                         key={`results-session-${resultsData.sessionNumber}`}
                                         matches={[...resultsData.matches].sort((a,b) => (a.court || 99) - (b.court || 99)) as any}
                                         teams={teams}
@@ -439,9 +441,9 @@ const TVDisplay: React.FC = () => {
                                 </div>
                             ) : viewMode === 'sponsor' && hasSponsors ? (
                                 <div className="h-full">
-                                    <SponsorDisplay 
+                                    <SponsorDisplay
                                         key={`sponsor-${sponsors[sponsorIndex % sponsors.length].id}`}
-                                        sponsor={sponsors[sponsorIndex % sponsors.length]} 
+                                        sponsor={sponsors[sponsorIndex % sponsors.length]}
                                     />
                                 </div>
                             ) : (
@@ -492,7 +494,7 @@ const TVDisplay: React.FC = () => {
                         </button>
                     </div>
 
-                    {isPreStarting && (
+                    {isPreStarting && tvConfig.showStartSponsor && (
                         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center"
                             style={{ background: 'rgba(2,6,23,0.97)' }}
                         >
@@ -530,14 +532,14 @@ const TVDisplay: React.FC = () => {
                 {/* PIED DE PAGE TV (BAS) */}
                 <footer className="h-[108px] bg-black border-t border-white/5 flex items-center overflow-hidden shrink-0 relative shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
                     {/* CHRONOMÈTRE BLOQUÉ À GAUCHE */}
-                    <div className="w-[288px] h-full bg-blue-700 flex flex-col items-center justify-center border-r border-blue-500/50 shadow-[10px_0_25px_rgba(0,0,0,0.4)] z-20 shrink-0">
+                    {tvConfig.showChronoOnTv && <div className="w-[288px] h-full bg-blue-700 flex flex-col items-center justify-center border-r border-blue-500/50 shadow-[10px_0_25px_rgba(0,0,0,0.4)] z-20 shrink-0">
                         <div className="text-xs uppercase font-black tracking-[0.3em] text-blue-200 mb-0.5 opacity-80">Chrono</div>
                         <TVTimer />
-                    </div>
+                    </div>}
 
                     {/* SCORES EN DIRECT DÉFILANTS (MARQUEE) */}
                     <div className="flex-1 h-full relative overflow-hidden flex items-center bg-[#020617] group">
-                        {pauseTimeLeft !== null && pauseTimeLeft > 0 ? (
+                        {moment !== 'poolsOver' && pauseTimeLeft !== null && pauseTimeLeft > 0 ? (
                             // Minuterie de pause
                             <div className="flex-1 flex items-center justify-center gap-4">
                                 <span className="text-xl text-amber-400 font-black">
@@ -551,7 +553,7 @@ const TVDisplay: React.FC = () => {
                                 </span>
                             </div>
                         ) : liveScores.length > 0 && (tvConfig?.showLiveScores ?? false) ? (
-                            <div 
+                            <div
                                 className="marquee-content animate-marquee"
                                 style={{ '--marquee-duration': `${Math.max(15, liveScores.length * 6)}s` } as any}
                             >
@@ -618,3 +620,4 @@ const TVDisplay: React.FC = () => {
 };
 
 export default TVDisplay;
+

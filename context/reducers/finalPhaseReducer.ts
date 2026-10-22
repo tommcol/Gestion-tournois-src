@@ -1,4 +1,5 @@
 
+import { validScore } from '../../utils/tournamentFlow';
 import { TournamentState, TournamentAction, FinalMatch } from '../../types';
 import { generateAutoPairings, createEmptyPairings, generateBracket, updateWinnerInFinals } from '../../utils/finalPhaseLogic';
 
@@ -83,6 +84,9 @@ export const finalPhaseReducer = (state: TournamentState, action: TournamentActi
     }
     case 'UPDATE_FINAL_MATCH_SCORE': {
       const { categoryId, matchId, score1, score2, isForfeit } = action.payload;
+      if (!validScore(score1, score2) || (!isForfeit && score1 === score2)) return state;
+      const target = state.finalMatches[categoryId]?.find(m => m.id === matchId);
+      if (!target?.team1Id || !target.team2Id) return state;
       const categoryMatches = state.finalMatches[categoryId] || [];
 
       let updatedFinalMatches = categoryMatches.map(m => {
@@ -90,7 +94,7 @@ export const finalPhaseReducer = (state: TournamentState, action: TournamentActi
           const winnerId = isForfeit 
             ? (isForfeit === 'team1' ? m.team2Id : m.team1Id)
             : (score1 > score2 ? m.team1Id : m.team2Id);
-          return { ...m, score1, score2, isForfeit, winnerId, status: 'finished' as const };
+          return { ...m, score1, score2, isForfeit, winnerId, isOvertime: false, isReady: false, status: 'finished' as const };
         }
         return m;
       });
@@ -109,3 +113,4 @@ export const finalPhaseReducer = (state: TournamentState, action: TournamentActi
       return state;
   }
 };
+

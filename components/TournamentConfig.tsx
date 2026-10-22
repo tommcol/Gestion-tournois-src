@@ -1,3 +1,4 @@
+import TVMomentSettings from './TVMomentSettings';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useTournament } from '../context/TournamentContext';
@@ -174,6 +175,7 @@ const TournamentConfig: React.FC = () => {
       `}</style>
       <div className="space-y-4 max-w-4xl mx-auto">
 
+        <TVMomentSettings />
         {/* SECTION 1 - INFORMATIONS GÉNÉRALES */}
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
             <SectionHeader icon="🏗️" title="Informations générales" sectionKey="general" />
@@ -583,3 +585,4 @@ const TournamentConfig: React.FC = () => {
 };
 
 export default TournamentConfig;
+

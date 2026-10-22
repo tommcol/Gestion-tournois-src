@@ -76,6 +76,7 @@ export interface FinalPhaseConfig {
 }
 
 export interface FinalMatch {
+  isOvertime?: boolean;
   id: string;
   categoryId: string;
   round: 'roundOf32' | 'roundOf16' | 'quarterFinal' | 'semiFinal' | 'final' | 'thirdPlace';
@@ -117,12 +118,23 @@ export interface TVConfig {
   showLiveScores: boolean;
 }
 
+export type TVMoment = 'welcome' | 'beforeFirst' | 'playing' | 'break' | 'lastSession' | 'poolsOver' | 'finals';
+export interface TVMomentConfig extends TVConfig { showStartSponsor: boolean }
+export interface CourtSubmission {
+  id: string; matchId: string; court: number; categoryId?: string; automatic?: boolean;
+  score1: number; score2: number; fouls1: number; fouls2: number;
+  team1Name: string; team2Name: string;
+}
+export interface CourtConflict { id: string; submission: CourtSubmission; score1: number; score2: number }
+
 export interface Track {
   name: string;
   url: string;
 }
 
 export interface TournamentState {
+  tvMoments?: Partial<Record<TVMoment, TVMomentConfig>>;
+  courtConflicts?: CourtConflict[];
   tournamentName: string;
   numberOfCourts: number;
   timerDuration: number; // in seconds
@@ -157,6 +169,7 @@ export type TournamentAction =
       sponsorDisplayDuration?: number;
       enableCourtView?: boolean;
       tvConfig?: Partial<TVConfig>;
+      tvMoments?: Partial<Record<TVMoment, TVMomentConfig>>;
     } }
   | { type: 'UPDATE_SOUND_CONFIG'; payload: CustomSoundConfig }
   | { type: 'ADD_CATEGORY'; payload: Category }

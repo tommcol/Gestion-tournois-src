@@ -1,3 +1,4 @@
+import { currentFinalMatches } from '../utils/tournamentFlow';
 import React, { useMemo, useEffect } from 'react';
 import { FinalMatch, Team, Category } from '../types';
 import { useTournamentContext } from '../context/TournamentContext';
@@ -38,34 +39,9 @@ const TVBracket: React.FC<TVBracketProps> = ({ category, finalMatches, teams }) 
 
     const activeRounds = ROUND_ORDER.filter(r => matchesByRound[r]);
 
-    // Tour à afficher : celui en cours ou forcé par l'admin
-    const currentRound = useMemo(() => {
-        if (category.activeTvRound && matchesByRound[category.activeTvRound as FinalMatch['round']]) {
-            return category.activeTvRound as FinalMatch['round'];
-        }
-        const inProgress = activeRounds.find(r => {
-            const ms = matchesByRound[r] || [];
-            return ms.some(m => m.team1Id && m.team2Id) && ms.some(m => m.status !== 'finished');
-        });
-        return inProgress || activeRounds[activeRounds.length - 1] || activeRounds[0];
-    }, [category.activeTvRound, activeRounds, matchesByRound]);
-
-    // Passage automatique au tour suivant
-    useEffect(() => {
-        if (category.activeTvRound || !currentRound) return;
-        const ms = matchesByRound[currentRound] || [];
-        const allFinished = ms.length > 0 && ms.every(m => m.status === 'finished');
-        const currentIdx = activeRounds.indexOf(currentRound);
-        if (allFinished && currentIdx < activeRounds.length - 1) {
-            const next = activeRounds[currentIdx + 1];
-            if ((matchesByRound[next] || []).some(m => m.team1Id && m.team2Id)) {
-                socket?.emit('update_tv_round', { categoryId: category.id, round: next });
-            }
-        }
-    }, [matchesByRound, currentRound, activeRounds, category.activeTvRound, socket]);
-
-    // Pagination
-    const currentMatches = matchesByRound[currentRound] || [];
+    // Chaque catégorie conserve tous les matchs de son tour jusqu'à validation du dernier score.
+    const currentMatches = currentFinalMatches(finalMatches.filter(m => m.categoryId === category.id));
+    const currentRound = currentMatches[0]?.round;
     const [page, setPage] = React.useState(0);
 
     // Reset page quand le tour change
@@ -99,7 +75,7 @@ const TVBracket: React.FC<TVBracketProps> = ({ category, finalMatches, teams }) 
             {/* Header */}
             <div className="h-20 flex items-center justify-between border-b-4 border-purple-600 mb-2 shrink-0">
                 <h1 className="text-5xl font-black uppercase tracking-tighter text-white">
-                    {category.name} — <span className="text-purple-400">{roundNames[currentRound]}</span>
+                    {category.name} — <span className="text-purple-400">{currentMatches.some(m => m.round === 'final') && currentMatches.some(m => m.round === 'thirdPlace') ? 'Finale et 3ème place' : roundNames[currentRound]}</span>
                 </h1>
                 {totalPages > 1 && (
                     <div className="text-2xl text-purple-400 font-black bg-purple-900/30 px-6 py-2 rounded-full border-2 border-purple-500/50">
@@ -175,7 +151,7 @@ const TVBracket: React.FC<TVBracketProps> = ({ category, finalMatches, teams }) 
                                         <span className={t2Wins ? 'text-green-400' : t1Wins ? 'text-red-400' : 'text-purple-400'}>{match.score2}</span>
                                     </div>
                                 ) : (
-                                    <span className="text-gray-500 italic" style={{ fontSize: `${fontSize * 0.6}px` }}>En attente</span>
+                                    <span className="text-gray-500 italic" style={{ fontSize: `${fontSize * 0.6}px` }}>{match.isOvertime ? 'Prolongation' : 'En attente'}</span>
                                 )}
                             </div>
                         </div>
@@ -187,3 +163,4 @@ const TVBracket: React.FC<TVBracketProps> = ({ category, finalMatches, teams }) 
 };
 
 export default TVBracket;
+

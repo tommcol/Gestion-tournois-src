@@ -1,6 +1,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTournament } from '../context/TournamentContext';
+import { sessionCanCollapse } from '../utils/tournamentFlow';
+import TVMomentSettings from './TVMomentSettings';
 import ScoreDialog from './ScoreDialog';
 import { Match, FinalMatch, Category, Player, Team } from '../types';
 import { getAdminTeamName } from '../utils/helpers';
@@ -9,6 +11,7 @@ import { downloadTournamentBackup } from '../utils/tournamentBackup';
 const GlobalSchedule: React.FC = () => {
   const { state, dispatch, socket } = useTournament();
   const { categories, teams, matches, pools, currentSession: currentSessionState, isPoolStageFinished, isTournamentStarted, numberOfCourts } = state;
+  const [expandedSessions, setExpandedSessions] = useState<Record<string, boolean>>({});
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
   const [readyCourts, setReadyCourts] = useState<number[]>([]);
   const [showTVControls, setShowTVControls] = useState(false);
@@ -358,6 +361,7 @@ const GlobalSchedule: React.FC = () => {
       )}
 
 
+      <TVMomentSettings compact />
       <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md">
         {hasBeenScheduled ? (
             <div className="overflow-x-auto">
@@ -382,12 +386,14 @@ const GlobalSchedule: React.FC = () => {
                         const isCurrent = currentSession !== null && sessionNum !== -1 && sessionNum === currentSession;
                         const isNext = currentSession !== null && sessionNum !== -1 && sessionNum > currentSession;
 
+                        const complete = sessionCanCollapse(sessionMatches);
+                        const expanded = !complete || (expandedSessions[sessionKey] ?? false);
                         return (
                             <React.Fragment key={`session-${sessionKey}`}>
                                 <tr className={`${isCurrent ? 'bg-blue-100 dark:bg-blue-900/50' : isPast ? 'bg-gray-50 dark:bg-gray-800' : 'bg-gray-100 dark:bg-gray-700'}`}>
                                 <td colSpan={8} className="px-4 py-2">
-                                    <div 
-                                        className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold text-sm mb-2 ${
+                                    <button type="button" aria-expanded={expanded} onClick={() => setExpandedSessions(prev => ({ ...prev, [sessionKey]: !expanded }))}
+                                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg font-bold text-sm mb-2 ${
                                             isCurrent
                                                 ? 'bg-blue-600 text-white shadow-lg ring-2 ring-blue-400'
                                                 : isPast ? 'bg-gray-200 dark:bg-gray-700 text-gray-500' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
@@ -399,11 +405,12 @@ const GlobalSchedule: React.FC = () => {
                                                 EN COURS
                                             </span>
                                         )}
-                                        {isPast && <span className="ml-2 text-[10px] uppercase font-bold opacity-70">Terminée</span>}
-                                    </div>
+                                        {complete && <span className="ml-2 text-xs">Tous les scores validés</span>}
+                                        <span className="ml-auto" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+                                    </button>
                                 </td>
                                 </tr>
-                                {sessionMatches.map(match => {
+                                {expanded && sessionMatches.map(match => {
                                 const team1 = match.team1Id ? getTeam(match.team1Id) : null;
                                 const team2 = match.team2Id ? getTeam(match.team2Id) : null;
                                 const category = match.team1Id ? getCategoryForTeam(match.team1Id) : null;
@@ -565,3 +572,4 @@ const GlobalSchedule: React.FC = () => {
 };
 
 export default GlobalSchedule;
+

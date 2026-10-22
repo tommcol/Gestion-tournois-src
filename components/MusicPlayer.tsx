@@ -206,6 +206,7 @@ const MusicPlayer: React.FC = () => {
                     newTracks.push({ name: file.name, url: data.url });
                 } catch (err) {
                     console.error('Upload failed for', file.name, err);
+                    window.alert(`La musique « ${file.name} » n’a pas été ajoutée. Vérifie la connexion au PC. L’ajout de musique n’est pas disponible dans l’aperçu Cloudflare.`);
                 }
             }
 
@@ -469,3 +470,4 @@ const MusicPlayer: React.FC = () => {
 };
 
 export default MusicPlayer;
+

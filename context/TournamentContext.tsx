@@ -1,3 +1,4 @@
+import { ClockSnapshot } from '../utils/tournamentFlow';
 
 import React, { createContext, useReducer, useContext, useEffect, ReactNode, useRef, useState } from 'react';
 import { TournamentState, TournamentAction, Team, FinalMatch } from '../types';
@@ -77,6 +78,7 @@ const tournamentReducer = (state: TournamentState, action: TournamentAction): To
 };
 
 const TournamentContext = createContext<{ 
+  clock: ClockSnapshot | null;
   state: TournamentState; 
   dispatch: React.Dispatch<TournamentAction>;
   emitAudioEvent: (data: any) => void;
@@ -87,6 +89,10 @@ const TournamentContext = createContext<{
 } | undefined>(undefined);
 
 export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [clock, setClock] = useState<ClockSnapshot | null>(null);
+  const clockRef = useRef<ClockSnapshot | null>(null);
+  const remoteView = new URLSearchParams(window.location.search).get('view');
+  const isRemote = remoteView === 'court' || remoteView === 'tv' || remoteView === 'tv_sponsors';
   const [state, dispatch] = useReducer(tournamentReducer, initialState);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -113,7 +119,8 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const socket = io({
       timeout: 3000,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity,
+      auth: { role: isRemote ? remoteView : 'admin' },
     });
     socketRef.current = socket;
 
@@ -134,6 +141,7 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
       if (fallbackTimer) clearTimeout(fallbackTimer);
       setIsPreviewMode(false);
 
+      if (isRemote) return;
       setTimeout(async () => {
         setIsLoaded(prev => {
           if (!prev) {
@@ -173,7 +181,13 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
       }
     });
 
+    const receiveClock = (data: ClockSnapshot) => {
+      clockRef.current = data; setClock(data);
+      window.dispatchEvent(new CustomEvent('tournament_clock_sync', { detail: data }));
+    };
+    socket.on('timer_sync', receiveClock);
     socket.on('audio_event', (data) => {
+      if (['timer_start', 'timer_tick', 'timer_pause', 'timer_end', 'timer_reset', 'prestart_begin'].includes(data.type)) receiveClock(data);
       window.dispatchEvent(new CustomEvent('tournament_audio_event', { detail: data }));
     });
 
@@ -189,7 +203,7 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Broadcast state changes to server or save locally in preview mode
   useEffect(() => {
-    if (!isLoaded || isUpdatingFromSocket.current) return;
+    if (!isLoaded || isRemote) return;
     
     const currentStateString = JSON.stringify(state);
     if (currentStateString === lastReceivedStateRef.current) return;
@@ -220,7 +234,16 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
   }, [state, isLoaded, isPreviewMode]);
 
   const emitAudioEvent = (data: any) => {
-    socketRef.current?.emit('play_audio', data);
+    const timed = ['timer_start', 'timer_tick', 'timer_pause', 'timer_end', 'timer_reset', 'prestart_begin'].includes(data.type);
+    const previous = clockRef.current;
+    const enriched = timed ? { ...data, session: state.currentSession, finals: state.isFinalPhase,
+      matchIds: state.isFinalPhase ? Object.values(state.finalMatches).flat().filter(m => m.isReady && m.status !== 'finished').map(m => m.id) : state.matches.filter(m => m.sessionNumber === state.currentSession).map(m => m.id),
+      endsAt: data.type === 'prestart_begin' ? Date.now() + 5000 : data.type === 'timer_start' ? Date.now() + (data.payload?.timeLeft ?? state.timerDuration) * 1000 : data.type === 'timer_tick' ? previous?.endsAt : undefined,
+      breakEndsAt: data.type === 'timer_end' ? Date.now() + state.breakDuration * 1000 : undefined,
+      payload: data.type === 'timer_pause' ? { timeLeft: previous?.endsAt ? Math.max(0, Math.ceil((previous.endsAt - Date.now()) / 1000)) : previous?.payload?.timeLeft } : data.payload
+    } : data;
+    if (timed) { clockRef.current = enriched; setClock(enriched); }
+    socketRef.current?.emit('play_audio', enriched);
   };
 
   const emitMusicCommand = (data: any) => {
@@ -241,6 +264,7 @@ export const TournamentProvider: React.FC<{ children: ReactNode }> = ({ children
   return (
     <TournamentContext.Provider value={{ 
       state, 
+      clock,
       dispatch, 
       emitAudioEvent, 
       emitMusicCommand, 
@@ -262,3 +286,4 @@ export const useTournament = () => {
 };
 
 export const useTournamentContext = useTournament;
+
