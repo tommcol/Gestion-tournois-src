@@ -59,3 +59,11 @@ test('en ligne : liste et affectations partent ensemble et survivent à une rest
   let replica=original;for(const m of result.messages.filter(m=>m.event==='state_patch'))replica=applyStatePatch(replica,m.args[0].patches);assert.deepEqual(replica,room.record.state);
   const restored=new RoomEngine(JSON.parse(JSON.stringify(room.record)));assert.equal(restored.record.state.officials[0].id,'official-new');assert.ok(restored.record.state.matches.some(m=>m.refereeId==='official-new'));
 });
+
+test('une personne polyvalente couvre la table pendant les pauses du marqueur, sans trou évitable',()=>{
+  const s=fixture();s.categories=[category('c',true,true)];s.officials=[staff('a-double',['Arbitre','Marqueur']),staff('b-marque',['Marqueur']),staff('c-ref')];
+  const next=reassignOfficials(s);
+  assert.ok(next.matches.every(m=>m.refereeId!=='Staff'&&m.scorerId!=='Staff'));
+  assert.ok(next.matches.slice(0,7).some(m=>m.scorerId!=='official-b-marque'));
+  for(const p of s.officials)assert.ok(next.matches.filter(m=>m.refereeId===p.id||m.scorerId===p.id).length<=7);
+});

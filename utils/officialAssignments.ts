@@ -75,11 +75,19 @@ export function reassignOfficials(state: TournamentState): TournamentState {
       const field = role === 'Arbitre' ? 'refereeId' : 'scorerId';
       const mandatory = role === 'Arbitre' ? s.category?.isRefereeMandatory : s.category?.isScorerMandatory;
       const candidates = mandatory && s.match.court ? people.filter(p => allowed(p,s,role)) : [];
+      // Soft pause target: rotate when another qualified person can cover the duty.
+      // It never creates a vacant duty merely to respect an intermediate target.
+      const pauseDue = (p: Person) => p.external && p.used >= Math.ceil((sessions.indexOf(order)+1)*p.quota/sessions.length) ? 1 : 0;
+      const tableDemand = here.filter(slot => slot.category?.isScorerMandatory && slot.match.court).length;
+      const availableScorers = people.filter(p => here.some(slot => allowed(p,slot,'Marqueur')));
+      const restedScorers = availableScorers.filter(p => !pauseDue(p));
+      const scorerPool = restedScorers.length ? restedScorers : availableScorers;
+      const tablePressure = (p: Person) => role === 'Arbitre' && scorerPool.includes(p) && scorerPool.length <= tableDemand ? 1 : 0;
       candidates.sort((a,b) => {
         // Prefer scorer-only volunteers for the table, preserving scarce referees.
         const scarce = (p: Person) => role === 'Marqueur' && p.person.roles.includes('Arbitre') ? 1 : 0;
         const continuity = (p: Person) => p.external && worked.get(order-1)?.get(p.id) === s.match.court ? -1 : 0;
-        return scarce(a)-scarce(b) || a.used/Math.max(1,a.quota)-b.used/Math.max(1,b.quota) || continuity(a)-continuity(b) || a.id.localeCompare(b.id);
+        return tablePressure(a)-tablePressure(b) || pauseDue(a)-pauseDue(b) || scarce(a)-scarce(b) || a.used/Math.max(1,a.quota)-b.used/Math.max(1,b.quota) || continuity(a)-continuity(b) || a.id.localeCompare(b.id);
       });
       const chosen = candidates[0];
       const id = mandatory ? chosen?.id || 'Staff' : null;
