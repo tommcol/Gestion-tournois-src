@@ -1,5 +1,6 @@
 
 import { validScore } from '../../utils/tournamentFlow';
+import { finalMatchStartIssue } from '../../utils/finalMatchSafety';
 import { TournamentState, TournamentAction, FinalMatch } from '../../types';
 import { generateAutoPairings, createEmptyPairings, generateBracket, updateWinnerInFinals } from '../../utils/finalPhaseLogic';
 
@@ -55,6 +56,11 @@ export const finalPhaseReducer = (state: TournamentState, action: TournamentActi
       const { categoryId, matchId, court } = action.payload;
       const categoryMatches = state.finalMatches[categoryId] || [];
 
+      const target = categoryMatches.find(m => m.id === matchId);
+      if (!target || (court !== undefined && (!Number.isInteger(court) || court < 1 || court > state.numberOfCourts))) return state;
+      // Un match actif reste sur son terrain jusqu'à son arrêt ou sa validation.
+      if (target.isReady && target.status !== 'finished' && court !== target.court) return state;
+
       let updatedFinalMatches = categoryMatches.map(m => {
         if (m.id === matchId) {
           return { ...m, court };
@@ -72,6 +78,8 @@ export const finalPhaseReducer = (state: TournamentState, action: TournamentActi
     }
     case 'SET_FINAL_MATCH_READY': {
       const { categoryId, matchId, isReady } = action.payload;
+      const target = state.finalMatches[categoryId]?.find(m => m.id === matchId);
+      if (!target || (isReady && finalMatchStartIssue(state, target))) return state;
       return {
           ...state,
           finalMatches: {
@@ -94,7 +102,7 @@ export const finalPhaseReducer = (state: TournamentState, action: TournamentActi
           const winnerId = isForfeit 
             ? (isForfeit === 'team1' ? m.team2Id : m.team1Id)
             : (score1 > score2 ? m.team1Id : m.team2Id);
-          return { ...m, score1, score2, isForfeit, winnerId, isOvertime: false, isReady: false, status: 'finished' as const };
+          return { ...m, score1, score2, isForfeit: isForfeit ?? null, winnerId, isOvertime: false, isReady: false, status: 'finished' as const };
         }
         return m;
       });

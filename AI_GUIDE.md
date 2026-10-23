@@ -1,3 +1,17 @@
+## Phases finales — version 2.4.1 du 23 octobre 2026
+
+### Problèmes corrigés après l'essai complet sur Cloudflare
+- `updateWinnerInFinals` renvoie de nouveaux objets uniquement pour les rencontres qui changent. Les vainqueurs passent au tour suivant et chaque perdant de demi-finale rejoint la petite finale sans mutation de l'ancien état : les mises à jour partielles atteignent PC, TV et tablettes sans F5. Les autres catégories restent inchangées.
+- L'éditeur manuel porte une clé composée de la catégorie et des identifiants des rencontres. La réception asynchrone du tableau créé sur le serveur réinitialise correctement son brouillon ; les scores ou voyants reçus ensuite ne remplacent pas les choix en cours. Un message indique la préparation tant que les rencontres ne sont pas arrivées.
+- `utils/finalMatchSafety.ts` vérifie les deux équipes, le terrain et les matchs déjà actifs, toutes catégories confondues. Le PC explique le refus. Le reducer commun et les serveurs Windows/Cloudflare contrôlent aussi l'activation : deux commandes concurrentes ne peuvent pas occuper le même terrain. Un match actif doit être arrêté avant un changement de terrain.
+- La prolongation des tablettes garde le score égal de départ dans le brouillon et sur le serveur (`overtimeStartScore`). Il faut marquer au moins deux points PENDANT cette prolongation pour envoyer le résultat, sans exiger deux points d'écart : 9–9 puis 11–10 est valable, 10–9 ne l'est pas. La notification PC/TV, les fautes et les points restent conservés. La confirmation de réception de la prolongation précède l'envoi du score ; les renvois ne changent pas le score de départ.
+- La règle est vérifiée également à la réception Windows et Cloudflare, avec réponse `overtime` si le résultat est prématuré. L'organisateur conserve son droit de corriger un résultat officiel ; cette correction manuelle n'est pas limitée par le contrôle tablette.
+
+### Vérifications et limites de cette livraison
+- `tests/finalPhaseRegression.test.mjs` couvre la progression complète depuis les quarts, l'immuabilité, la reconstruction des messages partiels, les conflits de terrain et d'équipe, les commandes concurrentes et la prolongation après restauration d'un tournoi en ligne.
+- `tests/courtNetwork.test.mjs` vérifie aussi le refus à un point et l'acceptation à deux points en prolongation sur le serveur Windows.
+- Cette livraison ne traite pas la répartition des arbitres/marqueurs, leurs feuilles personnelles ni les critères de départage des poules : ce sont des sujets séparés de l'audit.
+
 ## Tournois en ligne et dossiers médias — version 2.4.0 du 22 octobre 2026
 
 ### Deux modes conservés

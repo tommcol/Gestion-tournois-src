@@ -1,3 +1,4 @@
+import { beginFinalOvertime, finalMatchStartIssue } from '../utils/finalMatchSafety';
 import { TournamentState } from '../types';
 import { tournamentReducer } from '../context/tournamentReducer';
 import { diffState } from '../utils/statePatch';
@@ -47,6 +48,11 @@ export class RoomEngine {
     if (event === 'tournament_action') {
       if (!isAdmin || typeof data?.id !== 'string' || data.id.length > 128 || !validActions.has(data.action?.type)) return reject();
       if (r.recent.includes(data.id)) return { reply: { status: 'received' }, messages: [], persist: false };
+      if (data.action.type === 'SET_FINAL_MATCH_READY' && data.action.payload?.isReady) {
+        const target = r.state.finalMatches[data.action.payload.categoryId]?.find(m => m.id === data.action.payload.matchId);
+        const issue = target ? finalMatchStartIssue(r.state, target) : 'Match introuvable.';
+        if (issue) return { reply: { status: 'rejected', error: issue }, messages: [], persist: false };
+      }
       const next = tournamentReducer(r.state, data.action);
       const snapshot = getPreviousSessionSnapshot(r.state, next);
       if (snapshot) { r.backups = [...r.backups.slice(-4), snapshot.state]; while (r.backups.length && JSON.stringify(r.backups).length > 2000000) r.backups.shift(); }
@@ -76,7 +82,8 @@ export class RoomEngine {
       this.live.set(score.court, score); return { reply: { status: 'received' }, messages: [message('live_score_update', score)], persist: false };
     } else if (event === 'court_overtime') {
       if (!canCourt(data?.court) || !data.categoryId || !activeMatch()) return reject();
-      patch({ ...r.state, finalMatches: { ...r.state.finalMatches, [data.categoryId]: r.state.finalMatches[data.categoryId].map(m => m.id === data.matchId ? { ...m, isOvertime: true } : m) } });
+      const next = beginFinalOvertime(r.state, data); if (!next) return reject();
+      patch(next);
     } else if (event === 'play_audio') {
       if (!isAdmin) return reject();
       if (['timer_start', 'timer_tick', 'timer_pause', 'timer_end', 'timer_reset', 'prestart_begin'].includes(data?.type)) {

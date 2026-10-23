@@ -66,8 +66,11 @@ test('réseau : réception durable, conflit, choix PC, redémarrage et prolongat
     assert.equal((await disk()).matches[0].score1, 16);
     assert.equal((await send(tablet, 'court_submit', { ...submission, id: 'tie', matchId: 'f', categoryId: 'c', score1: 9, score2: 9 })).status, 'tie');
     const overtimeUpdate = received(admin, 'state_update', s => s.finalMatches.c[0].isOvertime);
-    assert.equal((await send(tablet, 'court_overtime', { matchId: 'f', categoryId: 'c', court: 1 })).status, 'received');
+    assert.equal((await send(tablet, 'court_overtime', { matchId: 'f', categoryId: 'c', court: 1, score1: 9, score2: 9 })).status, 'received');
     await overtimeUpdate;
+    assert.equal((await send(tablet, 'court_submit', { ...submission, id: 'ot-one', matchId: 'f', categoryId: 'c', score1: 10, score2: 9 })).status, 'overtime');
+    assert.equal((await disk()).finalMatches.c[0].status, 'pending');
+    assert.equal((await send(tablet, 'court_submit', { ...submission, id: 'ot-two', matchId: 'f', categoryId: 'c', score1: 11, score2: 10 })).status, 'received');
     state = await disk();
     // Une tablette ne doit plus réécrire le tournoi entier.
     tablet.emit('update_state', { ...state, tournamentName: 'écrasé' });

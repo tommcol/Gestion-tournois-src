@@ -1,3 +1,4 @@
+import { finalMatchStartIssue } from '../utils/finalMatchSafety';
 import { subscribeCourtReadiness } from '../utils/socketSubscriptions';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTournament } from '../context/TournamentContext';
@@ -81,6 +82,14 @@ const FinalPhaseManager: React.FC = () => {
     const effectiveNumberOfCourts = numberOfCourts;
 
     const finalMatches = state.finalMatches[selectedCategoryId] || [];
+    const toggleFinalMatch = (categoryId: string, match: FinalMatch) => {
+        if (!match.isReady) {
+            const issue = finalMatchStartIssue(state, match);
+            if (issue) { window.alert(issue); return; }
+        }
+        dispatch({ type: 'SET_FINAL_MATCH_READY', payload: { categoryId, matchId: match.id, isReady: !match.isReady } });
+    };
+
 
     const handleStartFinalPhase = () => {
         const concerned = new Set(Object.keys(state.finalMatches));
@@ -387,6 +396,7 @@ const FinalPhaseManager: React.FC = () => {
                                                     min={1}
                                                     max={numberOfCourts}
                                                     value={match.court ?? ''}
+                                                    disabled={isFinished || !!match.isReady}
                                                     onChange={(e) => dispatch({
                                                         type: 'UPDATE_FINAL_MATCH_COURT',
                                                         payload: {
@@ -433,14 +443,7 @@ const FinalPhaseManager: React.FC = () => {
                                                     ? (readyCourts.includes(match.court) ? '✅ Équipes prêtes — T.' + match.court : '✅ Tablette active — T.' + match.court)
                                                     : '○ Terrain ' + match.court + ' assigné'}</span>
                                                 <button
-                                                    onClick={() => dispatch({
-                                                        type: 'SET_FINAL_MATCH_READY',
-                                                        payload: {
-                                                            categoryId: selectedCategoryId,
-                                                            matchId: match.id,
-                                                            isReady: !match.isReady
-                                                        }
-                                                    })}
+                                                    onClick={() => toggleFinalMatch(selectedCategoryId, match)}
                                                     className={`ml-2 px-2 py-0.5 rounded text-xs font-bold ${
                                                         match.isReady
                                                             ? 'bg-red-800 text-red-200 hover:bg-red-700'
@@ -615,7 +618,7 @@ const FinalPhaseManager: React.FC = () => {
                                                                 max={numberOfCourts}
                                                                 value={match.court || ''}
                                                                 placeholder="T."
-                                                                disabled={isFinished}
+                                                                disabled={isFinished || !!match.isReady}
                                                                 onChange={e => dispatch({
                                                                     type: 'UPDATE_FINAL_MATCH_COURT',
                                                                     payload: {
@@ -652,14 +655,7 @@ const FinalPhaseManager: React.FC = () => {
                                                         {/* BOUTON DÉMARRER - entre les noms et le score */}
                                                         {enableCourtView && match.court && !isFinished && match.team1Id && match.team2Id && (
                                                             <button
-                                                                onClick={() => dispatch({
-                                                                    type: 'SET_FINAL_MATCH_READY',
-                                                                    payload: {
-                                                                        categoryId: match.category.id,
-                                                                        matchId: match.id,
-                                                                        isReady: !match.isReady
-                                                                    }
-                                                                })}
+                                                                onClick={() => toggleFinalMatch(match.category.id, match)}
                                                                 className={`px-3 py-1.5 rounded-lg text-xs font-bold flex-shrink-0 transition-colors ${
                                                                     match.isReady
                                                                         ? 'bg-green-600 text-white hover:bg-red-600'
@@ -930,6 +926,7 @@ const FinalPhaseManager: React.FC = () => {
             
             {isEditingManually && 
                 <ManualPairingsEditor 
+                    key={`${selectedCategoryId}:${finalMatches.map(m => m.id).join(',')}`}
                     categoryId={selectedCategoryId}
                     qualifiedTeams={qualifiedTeams}
                     initialMatches={finalMatches}

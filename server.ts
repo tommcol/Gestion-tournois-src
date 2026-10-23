@@ -1,3 +1,4 @@
+import { beginFinalOvertime, finalMatchStartIssue } from './utils/finalMatchSafety';
 import { readLiveScore } from './utils/liveScores';
 import { tournamentReducer } from './context/tournamentReducer';
 import { diffState } from './utils/statePatch';
@@ -258,6 +259,11 @@ async function startServer() {
             }
             const previous = tournamentState;
             try {
+                if (action.type === 'SET_FINAL_MATCH_READY' && action.payload?.isReady) {
+                    const target = previous.finalMatches[action.payload.categoryId]?.find((m: any) => m.id === action.payload.matchId);
+                    const issue = target ? finalMatchStartIssue(previous, target) : 'Match introuvable.';
+                    if (issue) return acknowledge({ status: 'rejected', error: issue });
+                }
                 const next = tournamentReducer(previous, action);
                 const snapshot = getPreviousSessionSnapshot(previous, next);
                 tournamentState = next;
@@ -368,14 +374,15 @@ async function startServer() {
                 acknowledge({ status: 'received' });
             } catch { acknowledge({ status: 'retry' }); }
         });
-        socket.on('court_overtime', ({ matchId, categoryId, court }, acknowledge = () => {}) => {
-            const match = tournamentState?.finalMatches?.[categoryId]?.find((m: any) => m.id === matchId && m.court === court && m.status !== 'finished');
-            if (!match) return acknowledge({ status: 'rejected' });
+        socket.on('court_overtime', async (data, acknowledge = () => {}) => {
+            if (!tournamentState || (role !== 'admin' && role !== 'court')) return acknowledge({ status: 'rejected' });
             const previousState = tournamentState;
-            tournamentState = { ...tournamentState, finalMatches: { ...tournamentState.finalMatches, [categoryId]: tournamentState.finalMatches[categoryId].map((m: any) => m.id === matchId ? { ...m, isOvertime: true } : m) } };
+            const next = beginFinalOvertime(tournamentState, data);
+            if (!next) return acknowledge({ status: 'rejected' });
+            tournamentState = next;
             broadcastState(previousState);
-            void saveState().catch(err => console.error('Prolongation non sauvegardée:', err));
-            acknowledge({ status: 'received' });
+            try { await saveState(true); acknowledge({ status: 'received' }); }
+            catch { acknowledge({ status: 'retry' }); }
         });
 
         // Tablette signale que les équipes sont prêtes

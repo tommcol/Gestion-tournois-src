@@ -92,6 +92,7 @@ const ManualPairingsEditor: React.FC<ManualPairingsEditorProps> = ({ categoryId,
 
                 <div className="w-2/3">
                     <div className="space-y-3">
+                        {pairings.length === 0 && <p role="status">Préparation des matchs…</p>}
                         {pairings.map((match, index) => (
                             <div key={match.id} className="grid grid-cols-11 gap-2 items-center bg-gray-50 dark:bg-gray-700 p-2 rounded">
                                 <span className="col-span-1 text-sm font-semibold">M{index + 1}</span>
@@ -114,7 +115,7 @@ const ManualPairingsEditor: React.FC<ManualPairingsEditorProps> = ({ categoryId,
                 </div>
             </div>
             <div className="mt-6 flex justify-end">
-                <button onClick={handleSaveChanges} className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">Sauvegarder les Appariements</button>
+                <button disabled={pairings.length === 0} onClick={handleSaveChanges} className="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">Sauvegarder les Appariements</button>
             </div>
         </div>
     );

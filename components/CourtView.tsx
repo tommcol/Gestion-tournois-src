@@ -1,3 +1,4 @@
+import { overtimeResultValid } from '../utils/finalMatchSafety';
 import { getOnlineSession, roomScope } from '../services/onlineSession';
 import { getStartingBonus } from '../utils/startingBonus';
 import { ClockSnapshot } from '../utils/tournamentFlow';
@@ -9,7 +10,7 @@ import { generateId } from '../utils/id';
 interface Draft extends CourtSubmission {
   phase: 'waiting' | 'ready' | 'playing' | 'pending' | 'sent' | 'conflict' | 'ended';
   remaining: number; endsAt?: number; running: boolean; overtime?: boolean;
-  overtimeReceived?: boolean; session: number; bonus1: number; bonus2: number;
+  overtimeStartScore?: number; overtimeReceived?: boolean; session: number; bonus1: number; bonus2: number;
 }
 
 const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
@@ -48,6 +49,7 @@ const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
     const current = draftRef.current;
     if (!current || current.phase === 'sent' || current.phase === 'conflict') return;
     if (current.categoryId && current.score1 === current.score2) { save({ ...current, phase: 'ended', running: false, endsAt: undefined, remaining: 0 }); return; }
+    if (current.overtime && (!current.overtimeReceived || !overtimeResultValid(current.overtimeStartScore, current.score1, current.score2))) return;
     const pending: Draft = { ...current, automatic: current.phase === 'pending' ? current.automatic : automatic, phase: 'pending', running: false, endsAt: undefined, remaining: 0 };
     if (current.phase !== 'pending') save(pending);
     if (!socket?.connected || sending.current) return;
@@ -58,6 +60,7 @@ const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
       if (err || !latest || latest.id !== pending.id) return;
       if (response?.status === 'received') save({ ...latest, phase: 'sent' });
       else if (response?.status === 'conflict') save({ ...latest, phase: 'conflict' });
+      else if (response?.status === 'overtime') save({ ...latest, phase: 'playing', overtime: true, overtimeReceived: false });
       else if (response?.status === 'tie') save({ ...latest, phase: 'ended' });
       else if (response?.status === 'clock' && response.clock) {
         const c = response.clock;
@@ -104,7 +107,7 @@ const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
         submit();
       }
       if (current.overtime && !current.overtimeReceived && socket?.connected) {
-        socket.timeout(3000).emit('court_overtime', current, (err: unknown, response: { status: string }) => {
+        socket.timeout(3000).emit('court_overtime', { ...current, score1: current.overtimeStartScore, score2: current.overtimeStartScore }, (err: unknown, response: { status: string }) => {
           const latest = draftRef.current;
           if (!err && response?.status === 'received' && latest?.id === current.id) save({ ...latest, overtimeReceived: true });
         });
@@ -121,7 +124,7 @@ const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
   const change = (field: 'score1' | 'score2' | 'fouls1' | 'fouls2', delta: number) => {
     const current = draftRef.current;
     if (!current || !['playing', 'ended'].includes(current.phase) || (current.phase === 'ended' && current.categoryId && !current.overtime)) return;
-    const min = field === 'score1' ? current.bonus1 : field === 'score2' ? current.bonus2 : 0;
+    const min = field.startsWith('score') && current.overtime ? current.overtimeStartScore ?? 0 : field === 'score1' ? current.bonus1 : field === 'score2' ? current.bonus2 : 0;
     save({ ...current, [field]: Math.max(min, Math.min(field.startsWith('fouls') ? 13 : Number.MAX_SAFE_INTEGER, current[field] + delta)) });
   };
   const locked = !!draft && ['pending', 'sent', 'conflict'].includes(draft.phase);
@@ -142,8 +145,9 @@ const CourtView: React.FC<{ courtNumber: number }> = ({ courtNumber }) => {
         {!locked && ['playing', 'ended'].includes(draft.phase) && <div className="flex justify-center gap-4 mt-2"><button aria-label={`Retirer une faute équipe ${n}`} className="p-3 border rounded-lg" onClick={() => change(n === 1 ? 'fouls1' : 'fouls2', -1)}>−</button><button aria-label={`Ajouter une faute équipe ${n}`} className="p-3 border rounded-lg" onClick={() => change(n === 1 ? 'fouls1' : 'fouls2', 1)}>+</button></div>}
         {(n === 1 ? draft.fouls1 : draft.fouls2) >= 7 && <p className="text-orange-600 text-xs mt-2">{(n === 1 ? draft.fouls1 : draft.fouls2) >= 10 ? '2 lancers-francs + possession' : '2 lancers-francs'}</p>}
       </div>)}</div>
-      {draft.categoryId && draft.score1 === draft.score2 && !locked && ['playing', 'ended'].includes(draft.phase) && <div className="bg-amber-100 text-amber-950 p-4 rounded-xl"><p>Égalité : le score ne peut pas être validé en phase finale.</p><button disabled={draft.remaining > 0} className="font-bold underline mt-2 disabled:opacity-40" onClick={() => save({ ...draft, overtime: true, phase: 'playing', running: false, endsAt: undefined, remaining: 0 })}>Prolongation — prévenir l’organisateur</button></div>}
-      {!locked && ['playing', 'ended'].includes(draft.phase) && <button className="w-full p-4 bg-green-600 text-white rounded-xl font-bold disabled:opacity-40" disabled={!!draft.categoryId && draft.score1 === draft.score2} onClick={() => { if (window.confirm(`Confirmer le score ${draft.score1} - ${draft.score2} ?`)) submit(); }}>Envoyer le score</button>}
+      {draft.categoryId && !draft.overtime && draft.score1 === draft.score2 && !locked && ['playing', 'ended'].includes(draft.phase) && <div className="bg-amber-100 text-amber-950 p-4 rounded-xl"><p>Égalité : le score ne peut pas être validé en phase finale.</p><button disabled={draft.remaining > 0} className="font-bold underline mt-2 disabled:opacity-40" onClick={() => save({ ...draft, overtime: true, overtimeStartScore: draft.score1, phase: 'playing', running: false, endsAt: undefined, remaining: 0 })}>Prolongation — prévenir l’organisateur</button></div>}
+      {draft.overtime && !locked && <p role="status" className="text-center font-bold">Prolongation : la première équipe qui marque 2 points pendant la prolongation gagne.</p>}
+      {!locked && ['playing', 'ended'].includes(draft.phase) && <button className="w-full p-4 bg-green-600 text-white rounded-xl font-bold disabled:opacity-40" disabled={!!draft.categoryId && (draft.score1 === draft.score2 || !!draft.overtime && (!draft.overtimeReceived || !overtimeResultValid(draft.overtimeStartScore, draft.score1, draft.score2)))} onClick={() => { if (window.confirm(`Confirmer le score ${draft.score1} - ${draft.score2} ?`)) submit(); }}>Envoyer le score</button>}
       {locked && <div className="text-center rounded-xl bg-white dark:bg-gray-800 p-5" role="status"><p className="text-xl font-bold">{draft.phase === 'sent' ? 'Score reçu par le PC ✓' : draft.phase === 'conflict' ? 'Deux scores différents : l’organisateur doit choisir.' : 'Score conservé — en attente de réception par le PC.'}</p><p className="mt-3">{draft.phase === 'sent' ? 'Seul l’organisateur peut le corriger.' : 'Montrez cet écran à l’organisateur si la connexion ne revient pas.'}</p></div>}
     </main>}
   </div>;

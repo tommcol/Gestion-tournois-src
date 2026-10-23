@@ -180,29 +180,18 @@ export const generateAutoPairings = (
 };
 
 export const updateWinnerInFinals = (matches: FinalMatch[], updatedMatchId: string): FinalMatch[] => {
-    const updatedMatches = [...matches];
-    const finishedMatch = updatedMatches.find(m => m.id === updatedMatchId);
+    const finishedMatch = matches.find(m => m.id === updatedMatchId);
     if (!finishedMatch || !finishedMatch.winnerId) return matches;
-
-    for (const match of updatedMatches) {
-        if (match.sourceMatch1 === finishedMatch.id) {
-            match.team1Id = finishedMatch.winnerId;
-        }
-        if (match.sourceMatch2 === finishedMatch.id) {
-            match.team2Id = finishedMatch.winnerId;
-        }
-        
-        if (match.round === 'thirdPlace') {
-            const semi1 = updatedMatches.find(m => m.id === match.sourceMatch1);
-            const semi2 = updatedMatches.find(m => m.id === match.sourceMatch2);
-            if (semi1?.winnerId && semi2?.winnerId) {
-                const loser1 = semi1.team1Id === semi1.winnerId ? semi1.team2Id : semi1.team1Id;
-                const loser2 = semi2.team1Id === semi2.winnerId ? semi2.team2Id : semi2.team1Id;
-                match.team1Id = loser1;
-                match.team2Id = loser2;
-            }
-        }
-    }
-
-    return updatedMatches;
+    // Ne jamais modifier les anciens objets : les diffusions partielles doivent
+    // pouvoir comparer le tableau d'avant au tableau d'après.
+    return matches.map(match => {
+        if (match.sourceMatch1 !== finishedMatch.id && match.sourceMatch2 !== finishedMatch.id) return match;
+        const participant = match.round === 'thirdPlace'
+            ? (finishedMatch.team1Id === finishedMatch.winnerId ? finishedMatch.team2Id : finishedMatch.team1Id)
+            : finishedMatch.winnerId!;
+        const team1Id = match.sourceMatch1 === finishedMatch.id ? participant : match.team1Id;
+        const team2Id = match.sourceMatch2 === finishedMatch.id ? participant : match.team2Id;
+        return team1Id === match.team1Id && team2Id === match.team2Id ? match : { ...match, team1Id, team2Id };
+    });
 };
+

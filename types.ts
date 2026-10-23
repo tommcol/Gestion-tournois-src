@@ -77,6 +77,7 @@ export interface FinalPhaseConfig {
 
 export interface FinalMatch {
   isOvertime?: boolean;
+  overtimeStartScore?: number;
   id: string;
   categoryId: string;
   round: 'roundOf32' | 'roundOf16' | 'quarterFinal' | 'semiFinal' | 'final' | 'thirdPlace';

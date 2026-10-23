@@ -1,3 +1,4 @@
+import { overtimeResultValid } from './finalMatchSafety';
 import { CourtSubmission, TournamentState } from '../types';
 import { validScore } from './tournamentFlow';
 import { finalPhaseReducer } from '../context/reducers/finalPhaseReducer';
@@ -12,6 +13,7 @@ export function receiveCourtScore(state: TournamentState, submission: CourtSubmi
     const conflicts = state.courtConflicts || [];
     return { state: { ...state, courtConflicts: conflicts.some(c => c.id === submission.id) ? conflicts : [...conflicts, { id: submission.id, submission, score1: match.score1!, score2: match.score2! }] }, status: 'conflict' as const };
   }
+  if (submission.categoryId && 'isOvertime' in match && match.isOvertime && !overtimeResultValid(match.overtimeStartScore, submission.score1, submission.score2)) return { state, status: 'overtime' as const };
   const next = submission.categoryId
     ? finalPhaseReducer(state, { type: 'UPDATE_FINAL_MATCH_SCORE', payload: { categoryId: submission.categoryId, matchId: submission.matchId, score1: submission.score1, score2: submission.score2 } })
     : poolMatchReducer(state, { type: 'UPDATE_MATCH_SCORE', payload: { matchId: submission.matchId, score1: submission.score1, score2: submission.score2 } });
