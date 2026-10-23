@@ -1,3 +1,29 @@
+## Officiels et séparation des sessions — version 2.5.0 du 23 octobre 2026
+
+### Inscriptions et accès
+- Dans « Arbitre / Marqueur », la liste « Staff et volontaires — personnes qui ne jouent pas » permet d'ajouter prénom, nom, Arbitre, Marqueur ou les deux. Modifier et Désactiver/Réactiver restent possibles. La désactivation conserve la personne pour comprendre les anciens résultats et enlève ses missions futures non commencées.
+- Deux cases indépendantes indiquent « Arbitrage en phases finales » et « Marque en phases finales ». Elles existent pour les joueurs dans leur inscription et pour les officiels non joueurs. Non coché = non disponible ; les anciennes inscriptions sans ces champs ne sont pas supposées disponibles pour les finales. Le rôle correspondant doit être coché aussi.
+- `types.ts` ajoute `Official`, `TournamentState.officials`, `Player.finalsReferee/finalsScorer` et les actions UPSERT_OFFICIAL, SET_OFFICIAL_ACTIVE, REASSIGN_OFFICIALS. Les deux serveurs autorisent ces actions uniquement aux organisateurs. Les sauvegardes et messages partiels incluent la liste, indépendamment des médias.
+
+### Répartition des missions
+- `utils/officialAssignments.ts` centralise l'attribution. Le calendrier des matchs ne bouge pas : seules refereeId/scorerId changent. La catégorie commande si un arbitre et/ou un marqueur sont nécessaires ; les rôles non demandés restent vides.
+- Joueurs : plafond commun arbitrage + marque = partie entière de 30 % des sessions sans match. Exemple : 10 sessions, 4 jouées donnent 6 libres, donc une mission maximum. Avec 3 libres le plafond vaut zéro : ne pas ajouter automatiquement un minimum d'une mission. Aucun arbitrage d'une rencontre de sa propre poule. Une mission ne peut chevaucher un match joué ou une autre mission ; une session sépare les activités du joueur.
+- Non joueurs : plafond indicatif arrondi à l'entier le plus proche de 70 % des sessions prévues (7 pour 10, 4 pour 6). Ce n'est pas une obligation de créer des missions inutiles. Les personnes les moins chargées par rapport à leur plafond passent d'abord, ce qui décale leurs pauses. Tous les arbitrages d'une session sont affectés avant les tables. Les personnes uniquement marqueurs sont prioritaires pour la marque, préservant les personnes capables d'arbitrer.
+- Un non joueur qui travaille à deux sessions consécutives reste sur le même terrain ; après une pause, il peut changer. Aucun officiel ne reçoit deux missions simultanées. Si les disponibilités, repos ou plafonds empêchent une affectation, l'identifiant technique Staff reste utilisé mais le texte visible est exactement « Arbitre — staff/volontaire » ou « Marqueur — staff/volontaire ».
+- Les matchs terminés, la session de poule déjà commencée et les matchs de finale activés gardent leurs missions. « Répartir les missions à venir » permet de reprendre un ancien calendrier sans déplacer les rencontres ni modifier les scores. L'inscription/modification d'un officiel recalcule automatiquement les missions à venir.
+- Quand le planning des finales existe, les compteurs comprennent les sessions de poule puis les sessions finales, sans les confondre. Les compteurs sont recalculés avec le programme actuellement connu ; les anciennes affectations sont conservées. Si les participants futurs ne sont pas encore connus, tous les participants possibles sont exclus des missions qui pourraient chevaucher leur match. Les nouvelles affiches sont prises en compte après un résultat PC ou tablette. L'activation manuelle vérifie aussi qu'un joueur ou un officiel n'est pas déjà occupé sur un autre match actif.
+- La répartition est un compromis automatique, pas une garantie de couvrir tous les terrains : les cases staff/volontaire signalent précisément ce qui reste à pourvoir. Les pauses de personnes ayant des compétences différentes peuvent se rejoindre si les contraintes ne permettent pas mieux.
+
+### Tableau, feuilles et lisibilité
+- Le tableau des officiels affiche session, terrain, rencontre, noms attribués et personnes en repos, pour les poules ou les finales. Les noms non joueurs apparaissent aussi au calendrier global et dans les tableaux finaux.
+- Les feuilles non joueurs sont accessibles depuis Arbitre / Marqueur et depuis Feuilles de Route > Feuilles de route des officiels. Choisir les personnes et Poules/Phases finales, préparer l'aperçu puis imprimer. Plusieurs personnes tiennent sur une page A4 paysage ; les longues listes sont découpées en parties sans perdre les pauses ou missions. Colonnes : Session, Terrain, Rôle, Match. Le nombre de pages est annoncé.
+- `utils/officialRoadmaps.ts`, `OfficialPaperCard` et le portail d'impression existant produisent le même document à l'écran et à l'impression. L'aperçu est un instantané à préparer de nouveau si le planning change.
+- Calendrier global : bandes de session plus contrastées, bordure supérieure épaisse dans la couleur de l'application et espace entre les sessions. Le repli automatique et les boutons gardent leur fonctionnement ; chrono, musique et commandes générales restent à leur place.
+
+### Vérifications
+- tests/officials.test.mjs couvre les quotas, la poule d'origine, les conflits, les repos, les deux rôles, le maintien du terrain, la désactivation et la conservation des missions terminées, les choix des finales, les feuilles multipages et la diffusion en ligne.
+- tests/courtNetwork.test.mjs vérifie aussi l'enregistrement et la restauration d'un officiel sur le serveur Windows.
+
 ## Phases finales — version 2.4.1 du 23 octobre 2026
 
 ### Problèmes corrigés après l'essai complet sur Cloudflare
@@ -912,4 +938,5 @@ Tous les fichiers de code du projet ont été inspectés intégralement pour la 
 - `components/TournamentConfig.tsx`
 
 *Aucun fichier utile n'a été ignoré ou laissé de côté.*
+
 

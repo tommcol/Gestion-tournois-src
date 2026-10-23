@@ -1,3 +1,4 @@
+import { assignPoolOfficials } from './officialAssignments';
 
 import { Team, Match, Category, FinalMatch } from '../types';
 
@@ -168,90 +169,6 @@ export const generateSchedule = (
         sessionNumber++;
     }
 
-    const totalSessions = sessionNumber - 1;
-    const allPlayers = allTeams.flatMap(t => t.players);
-    const allReferees = allPlayers.filter(p => p.roles.includes('Arbitre'));
-    const allScorers = allPlayers.filter(p => p.roles.includes('Marqueur'));
-    
-    const playerConstraints = new Map<string, { sessionsPlaying: Set<number>, maxAssignments: number, currentAssignments: number }>();
-    allPlayers.forEach(player => {
-        const playerTeam = allTeams.find(t => t.players.some(p => p.id === player.id));
-        const sessionsPlaying = new Set(scheduledMatches.filter(m => m.team1Id === playerTeam?.id || m.team2Id === playerTeam?.id).map(m => m.sessionNumber!));
-        const availableSessions = totalSessions - sessionsPlaying.size;
-        const maxAssignments = Math.floor(availableSessions * 0.3);
-        playerConstraints.set(player.id, { sessionsPlaying, maxAssignments, currentAssignments: 0 });
-    });
-
-    const sessionAssignments = new Map<number, Set<string>>(); 
-    for (let s = 1; s <= totalSessions; s++) {
-        const busy = new Set<string>();
-        scheduledMatches.filter(m => m.sessionNumber === s).forEach(m => {
-            allTeams.find(t => t.id === m.team1Id)?.players.forEach(p => busy.add(p.id));
-            allTeams.find(t => t.id === m.team2Id)?.players.forEach(p => busy.add(p.id));
-        });
-        sessionAssignments.set(s, busy);
-    }
-
-    const matchesToSort = [...scheduledMatches].sort((a,b) => (a.sessionNumber || 0) - (b.sessionNumber || 0) || (a.court || 0) - (b.court || 0));
-
-    matchesToSort.forEach(match => {
-        if (!match.sessionNumber) return;
-        const s = match.sessionNumber;
-        const busyInSession = sessionAssignments.get(s)!;
-        const busyInPrevSession = sessionAssignments.get(s - 1);
-
-        const validReferees = allReferees.filter(ref => {
-            if (busyInSession.has(ref.id)) return false;
-            if (busyInPrevSession && busyInPrevSession.has(ref.id)) return false;
-            const constr = playerConstraints.get(ref.id);
-            if (!constr || constr.currentAssignments >= constr.maxAssignments) return false;
-            const playerTeam = allTeams.find(t => t.players.some(p => p.id === ref.id));
-            return playerTeam?.poolId !== match.poolId;
-        }).sort((a, b) => {
-            const curA = playerConstraints.get(a.id)?.currentAssignments || 0;
-            const curB = playerConstraints.get(b.id)?.currentAssignments || 0;
-            return curA - curB;
-        });
-
-        if (validReferees.length > 0) {
-            const referee = validReferees[0];
-            match.refereeId = referee.id;
-            playerConstraints.get(referee.id)!.currentAssignments++;
-            busyInSession.add(referee.id);
-        } else {
-            match.refereeId = "Staff";
-        }
-
-        const validScorers = allScorers.filter(scorer => {
-            if (busyInSession.has(scorer.id)) return false;
-            if (busyInPrevSession && busyInPrevSession.has(scorer.id)) return false;
-            const constr = playerConstraints.get(scorer.id);
-            if (!constr || constr.currentAssignments >= constr.maxAssignments) return false;
-            return true;
-        }).sort((a, b) => {
-            const curA = playerConstraints.get(a.id)?.currentAssignments || 0;
-            const curB = playerConstraints.get(b.id)?.currentAssignments || 0;
-            return curA - curB;
-        });
-
-        if (validScorers.length > 0) {
-            const scorer = validScorers[0];
-            match.scorerId = scorer.id;
-            playerConstraints.get(scorer.id)!.currentAssignments++;
-            busyInSession.add(scorer.id);
-        } else {
-            match.scorerId = "Staff";
-        }
-    });
-
-    matchesToSort.forEach(m => {
-        const original = scheduledMatches.find(sm => sm.id === m.id);
-        if (original) {
-            original.refereeId = m.refereeId;
-            original.scorerId = m.scorerId;
-        }
-    });
-
     scheduledMatches.forEach(m => {
         if (finishedMatchData.has(m.id)) {
             m.status = 'finished';
@@ -263,7 +180,7 @@ export const generateSchedule = (
         }
     });
 
-    return scheduledMatches;
+    return assignPoolOfficials(scheduledMatches, allTeams, categories);
 };
 
 export const scheduleFinalMatches = (
@@ -339,4 +256,5 @@ export const scheduleFinalMatches = (
 
     return result;
 };
+
 

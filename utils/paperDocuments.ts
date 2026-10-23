@@ -12,8 +12,9 @@ export interface MatchCard {
   team1: string; team2: string; bonus1: number; bonus2: number;
 }
 export interface CalendarCard { kind: 'calendar'; rows: { session?: number; court: number | null; match: string; score: string }[] }
-export interface PaperPage { cards: (RouteCard | MatchCard | CalendarCard)[]; columns: number }
-export interface PaperDocument { title: string; pages: PaperPage[]; preparedAt: number; kind: 'routes' | 'matches' | 'calendar'; itemCount: number }
+export interface OfficialCard { kind: 'official'; id: string; name: string; stage: string; part: number; parts: number; height: number; rows: { session: number; court: string; role: string; match: string; height: number }[] }
+export interface PaperPage { cards: (RouteCard | MatchCard | CalendarCard | OfficialCard)[]; columns: number }
+export interface PaperDocument { title: string; pages: PaperPage[]; preparedAt: number; kind: 'routes' | 'matches' | 'calendar' | 'officials'; itemCount: number }
 export type PaperData = Pick<TournamentState, 'categories' | 'teams' | 'pools' | 'matches'>;
 export type MeasureText = (text: string) => number;
 const defaultMeasure: MeasureText = text => Array.from(text).length * 6;
@@ -142,3 +143,4 @@ export function roadmapExportRows(document: PaperDocument) {
   }
   return rows;
 }
+

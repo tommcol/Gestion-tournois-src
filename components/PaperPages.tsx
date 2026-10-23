@@ -1,5 +1,5 @@
 import React from 'react';
-import { MatchCard, PaperDocument, PaperPage, RouteCard, routeWidths } from '../utils/paperDocuments';
+import { MatchCard, OfficialCard, PaperDocument, PaperPage, RouteCard, routeWidths } from '../utils/paperDocuments';
 
 export function RoutePaperCard({ card }: { card: RouteCard }) {
   const widths = routeWidths(card.referee, card.scorer);
@@ -10,6 +10,9 @@ export function RoutePaperCard({ card }: { card: RouteCard }) {
       <tbody>{card.rows.map(row => <tr key={row.session} style={{ height: `${row.height}mm` }}><td>{row.session}</td><td>{row.match || '—'}</td><td>{row.court || '—'}</td>{card.referee && <td>{row.referee || '—'}</td>}{card.scorer && <td>{row.scorer || '—'}</td>}</tr>)}</tbody>
     </table>
   </section>;
+}
+export function OfficialPaperCard({ card }: { card: OfficialCard }) {
+  return <section className="route-paper-card official-paper-card" style={{ minHeight: `${card.height}mm` }}><header><small>{card.stage} — Officiel non joueur</small><h3>{card.name}</h3>{card.parts>1&&<small>Partie {card.part}/{card.parts}</small>}</header><table><colgroup><col style={{width:'12%'}}/><col style={{width:'14%'}}/><col style={{width:'22%'}}/><col style={{width:'52%'}}/></colgroup><thead><tr><th>Session</th><th>Terrain</th><th>Rôle</th><th>Match</th></tr></thead><tbody>{card.rows.map(row=><tr key={row.session} style={{height:`${row.height}mm`}}><td>{row.session}</td><td>{row.court||'—'}</td><td>{row.role}</td><td>{row.match||'—'}</td></tr>)}</tbody></table></section>;
 }
 export function MatchPaperCard({ card }: { card: MatchCard }) {
   const scores = (bonus: number) => <div className="paper-score-grid">{Array.from({ length: 21 }, (_, index) => {
@@ -34,7 +37,7 @@ function Page({ page, paper, index, total }: { page: PaperPage; paper: PaperDocu
   return <article className={`paper-page paper-${paper.kind} ${paper.kind === 'matches' && matchRows === 3 ? 'paper-match-compact' : ''}`} aria-label={`Feuille ${index + 1} sur ${total}`}>
     <header className="paper-page-title"><strong>{paper.title}</strong><span>Feuille {index + 1}/{total}</span></header>
     <div className="paper-page-body" style={{ gridTemplateColumns: `repeat(${page.columns}, minmax(0, 1fr))`, ...(paper.kind === 'matches' ? { gridAutoRows: `calc((177mm - ${(matchRows - 1) * 3}mm) / ${matchRows})` } : {}) }}>
-      {page.cards.map((card, n) => card.kind === 'route' ? <RoutePaperCard key={`${card.teamId}-${card.part}`} card={card} /> : card.kind === 'match' ? <MatchPaperCard key={card.id} card={card} /> : <table key={n} className="paper-calendar"><thead><tr><th>Session</th><th>Terrain</th><th>Match</th><th>Score</th></tr></thead><tbody>{card.rows.map((row, i) => <tr key={i}><td>{row.session}</td><td>{row.court ?? '—'}</td><td>{row.match}</td><td>{row.score}</td></tr>)}</tbody></table>)}
+      {page.cards.map((card, n) => card.kind === 'route' ? <RoutePaperCard key={`${card.teamId}-${card.part}`} card={card} /> : card.kind === 'match' ? <MatchPaperCard key={card.id} card={card} /> : card.kind === 'official' ? <OfficialPaperCard key={`${card.id}-${card.part}`} card={card}/> : <table key={n} className="paper-calendar"><thead><tr><th>Session</th><th>Terrain</th><th>Match</th><th>Score</th></tr></thead><tbody>{card.rows.map((row, i) => <tr key={i}><td>{row.session}</td><td>{row.court ?? '—'}</td><td>{row.match}</td><td>{row.score}</td></tr>)}</tbody></table>)}
     </div>
     <footer className="paper-page-footer">Préparé le {new Date(paper.preparedAt).toLocaleString('fr-FR')} · Découper entre les cadres si nécessaire.</footer>
   </article>;
@@ -42,3 +45,4 @@ function Page({ page, paper, index, total }: { page: PaperPage; paper: PaperDocu
 export const PaperPages = React.memo(function PaperPages({ paper }: { paper: PaperDocument }) {
   return <>{paper.pages.map((page, index) => <Page key={index} page={page} paper={paper} index={index} total={paper.pages.length} />)}</>;
 });
+

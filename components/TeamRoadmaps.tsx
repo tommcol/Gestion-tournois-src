@@ -1,3 +1,4 @@
+import OfficialRoadmaps from './OfficialRoadmaps';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTournamentFields, useTournamentSelector, useTournamentStateReader } from '../context/TournamentContext';
 import { createCalendarDocument, createMatchDocument, createRouteDocument, PaperDocument, roadmapExportRows, samePaperMatches } from '../utils/paperDocuments';
@@ -13,7 +14,7 @@ const TeamRoadmaps: React.FC = () => {
   const { categories, teams, pools } = useTournamentFields('categories', 'teams', 'pools');
   const matches = useTournamentSelector(state => state.matches, samePaperMatches);
   const readState = useTournamentStateReader();
-  const [section, setSection] = useState<'routes' | 'matches'>('routes');
+  const [section, setSection] = useState<'routes' | 'matches' | 'officials'>('routes');
   const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
   const [selections, setSelections] = useState<Record<string, string[] | undefined>>({});
   const [mode, setMode] = useState<'session' | 'terrain'>('session');
@@ -32,7 +33,7 @@ const TeamRoadmaps: React.FC = () => {
   // Les scores seuls ne remplacent pas matches : aucune préparation cachée à chaque résultat.
   useEffect(() => { setPaper(null); setMessage(''); }, [categories, teams, pools, matches, section, categoryId, selections, mode, session, court]);
   const data = { categories, teams, pools, matches };
-  const prepare = (kind: 'routes' | 'matches' | 'calendar' = section) => {
+  const prepare = (kind: 'routes' | 'matches' | 'calendar' = section === 'matches' ? 'matches' : 'routes') => {
     try {
       const result = kind === 'routes' ? createRouteDocument(data, categoryId, selectedIds, textMeasure()) : kind === 'matches' ? createMatchDocument(data, mode, mode === 'session' ? session : court, 4, textMeasure()) : createCalendarDocument(readState(), categoryId);
       setPaper(result); setMessage(result.pages.length ? '' : 'Aucune feuille à préparer avec ces choix.');
@@ -59,8 +60,9 @@ const TeamRoadmaps: React.FC = () => {
     <div role="tablist" aria-label="Documents à imprimer" className="flex flex-wrap gap-3">
       <button role="tab" aria-selected={section === 'routes'} onClick={() => setSection('routes')} className={`${button} ${section === 'routes' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800'}`}>Feuilles de route des équipes</button>
       <button role="tab" aria-selected={section === 'matches'} onClick={() => setSection('matches')} className={`${button} ${section === 'matches' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800'}`}>Feuilles de match</button>
+      <button role="tab" aria-selected={section === 'officials'} onClick={() => setSection('officials')} className={`${button} ${section === 'officials' ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800'}`}>Feuilles de route des officiels</button>
     </div>
-    {section === 'routes' ? <>
+    {section === 'officials' ? <OfficialRoadmaps/> : section === 'routes' ? <>
       <section className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm space-y-3">
         <h2 className="text-lg font-bold">1. Choisir la catégorie</h2>
         <div role="tablist" aria-label="Catégorie des feuilles de route" className="flex items-center gap-2 flex-wrap">{categories.map(item => <button key={item.id} role="tab" aria-selected={categoryId === item.id} onClick={() => setCategoryId(item.id)} className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors ${categoryId === item.id ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}><span style={{ backgroundColor: item.color }} className="w-3 h-3 rounded-full flex-shrink-0"></span><span>{item.name}</span></button>)}</div>
@@ -95,3 +97,4 @@ const TeamRoadmaps: React.FC = () => {
   </div>;
 };
 export default TeamRoadmaps;
+

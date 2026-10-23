@@ -1,3 +1,4 @@
+import { reassignOfficials } from './officialAssignments';
 import { overtimeResultValid } from './finalMatchSafety';
 import { CourtSubmission, TournamentState } from '../types';
 import { validScore } from './tournamentFlow';
@@ -17,5 +18,6 @@ export function receiveCourtScore(state: TournamentState, submission: CourtSubmi
   const next = submission.categoryId
     ? finalPhaseReducer(state, { type: 'UPDATE_FINAL_MATCH_SCORE', payload: { categoryId: submission.categoryId, matchId: submission.matchId, score1: submission.score1, score2: submission.score2 } })
     : poolMatchReducer(state, { type: 'UPDATE_MATCH_SCORE', payload: { matchId: submission.matchId, score1: submission.score1, score2: submission.score2 } });
-  return { state: next, status: 'received' as const };
+  return { state: submission.categoryId ? reassignOfficials(next) : next, status: 'received' as const };
 }
+

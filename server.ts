@@ -248,7 +248,7 @@ async function startServer() {
                 io.emit('state_update', tournamentState, { revision });
             } else socket.emit('state_update', tournamentState, { revision });
         });
-        const validActions = new Set(['SET_STATE', 'UPDATE_CONFIG', 'UPDATE_SOUND_CONFIG', 'ADD_CATEGORY', 'UPDATE_CATEGORY', 'DELETE_CATEGORY', 'ADD_TEAM', 'UPDATE_TEAM', 'DELETE_TEAM', 'GENERATE_CATEGORY_POOLS_AND_MATCHES', 'RESET_CATEGORY_POOLS', 'UPDATE_MATCH_SCORE', 'UPDATE_FINAL_CONFIG', 'GENERATE_FINAL_PHASE', 'UPDATE_MANUAL_PAIRINGS', 'UPDATE_FINAL_MATCH_SCORE', 'UPDATE_FINAL_MATCH_COURT', 'SET_FINAL_MATCH_READY', 'DELETE_FINAL_PHASE', 'ADD_SPONSOR', 'UPDATE_SPONSOR', 'DELETE_SPONSOR', 'UPDATE_PLAYLIST', 'NEXT_SESSION', 'PREVIOUS_SESSION', 'RESET_SESSIONS', 'FINISH_POOL_STAGE', 'START_FINAL_PHASE', 'START_TOURNAMENT', 'SET_TV_ROUND', 'CLEAR_DATA', 'RESET_TOURNAMENT']);
+        const validActions = new Set(['UPSERT_OFFICIAL', 'SET_OFFICIAL_ACTIVE', 'REASSIGN_OFFICIALS', 'SET_STATE', 'UPDATE_CONFIG', 'UPDATE_SOUND_CONFIG', 'ADD_CATEGORY', 'UPDATE_CATEGORY', 'DELETE_CATEGORY', 'ADD_TEAM', 'UPDATE_TEAM', 'DELETE_TEAM', 'GENERATE_CATEGORY_POOLS_AND_MATCHES', 'RESET_CATEGORY_POOLS', 'UPDATE_MATCH_SCORE', 'UPDATE_FINAL_CONFIG', 'GENERATE_FINAL_PHASE', 'UPDATE_MANUAL_PAIRINGS', 'UPDATE_FINAL_MATCH_SCORE', 'UPDATE_FINAL_MATCH_COURT', 'SET_FINAL_MATCH_READY', 'DELETE_FINAL_PHASE', 'ADD_SPONSOR', 'UPDATE_SPONSOR', 'DELETE_SPONSOR', 'UPDATE_PLAYLIST', 'NEXT_SESSION', 'PREVIOUS_SESSION', 'RESET_SESSIONS', 'FINISH_POOL_STAGE', 'START_FINAL_PHASE', 'START_TOURNAMENT', 'SET_TV_ROUND', 'CLEAR_DATA', 'RESET_TOURNAMENT']);
         socket.on('tournament_action', async (request, acknowledge = () => {}) => {
             if (role !== 'admin' || !tournamentState || typeof request?.id !== 'string' || request.id.length > 128 || !validActions.has(request.action?.type)) return acknowledge({ status: 'rejected', error: 'Commande invalide.' });
             const { id, action } = request;
@@ -476,4 +476,5 @@ async function startServer() {
 }
 
 startServer();
+
 

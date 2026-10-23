@@ -71,7 +71,7 @@ const TeamForm: React.FC<TeamFormProps> = ({ team, onSave, onCancel, isRefereeMa
                 } else {
                     newRoles.delete(role);
                 }
-                return { ...p, roles: Array.from(newRoles) };
+                return { ...p, roles: Array.from(newRoles), ...(isChecked ? {} : role === 'Arbitre' ? { finalsReferee: false } : { finalsScorer: false }) };
             }
             return p;
         });
@@ -197,6 +197,11 @@ const TeamForm: React.FC<TeamFormProps> = ({ team, onSave, onCancel, isRefereeMa
                             <span className="text-sm">Marqueur</span>
                         </label>
                     </div>
+                    <fieldset className="col-span-3 flex flex-wrap gap-4 text-sm border-t pt-2">
+                        <legend className="text-xs font-semibold">Disponible pour les phases finales</legend>
+                        <label><input type="checkbox" disabled={!player.roles.includes('Arbitre')} checked={!!player.finalsReferee} onChange={e => handlePlayerChange(player.id, 'finalsReferee', e.target.checked)} /> Arbitrage en phases finales</label>
+                        <label><input type="checkbox" disabled={!player.roles.includes('Marqueur')} checked={!!player.finalsScorer} onChange={e => handlePlayerChange(player.id, 'finalsScorer', e.target.checked)} /> Marque en phases finales</label>
+                    </fieldset>
                 </div>
             ))}
             {localTeam.players.length < 5 && (
@@ -459,4 +464,5 @@ const TeamManager: React.FC = () => {
 };
 
 export default TeamManager;
+
 

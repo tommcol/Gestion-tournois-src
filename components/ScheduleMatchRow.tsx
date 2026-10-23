@@ -5,7 +5,7 @@ export interface QuickScore { s1: number; s2: number }
 interface Props {
     match: Match; team1: Team | null | undefined; team2: Team | null | undefined;
     category: Category | null | undefined; poolDisplayName: string; isPast: boolean; quickScore: QuickScore;
-    renderOfficial: (id: string | null) => React.ReactNode;
+    renderOfficial: (id: string | null, role?: 'Arbitre' | 'Marqueur') => React.ReactNode;
     handleQuickScore: (id: string, team: 1 | 2, delta: number) => void;
     handleQuickValidate: (match: Match, score: QuickScore) => void;
     setEditingMatch: (match: Match) => void;
@@ -30,8 +30,8 @@ function ScheduleMatchRow({ match, team1, team2, category, poolDisplayName, isPa
                                         </div>
                                     </td>
                                     <td className="px-4 py-3 text-center">{match.court || '-'}</td>
-                                    <td className="px-4 py-3 text-xs">{renderOfficial((match as Match).refereeId || null)}</td>
-                                    <td className="px-4 py-3 text-xs">{renderOfficial((match as Match).scorerId || null)}</td>
+                                    <td className="px-4 py-3 text-xs">{renderOfficial((match as Match).refereeId || null, 'Arbitre')}</td>
+                                    <td className="px-4 py-3 text-xs">{renderOfficial((match as Match).scorerId || null, 'Marqueur')}</td>
                                     <td className="px-4 py-3 text-center">
                                         <div className="flex flex-col items-center gap-2">
                                             {match.status === 'pending' ? (
@@ -97,3 +97,4 @@ function ScheduleMatchRow({ match, team1, team2, category, poolDisplayName, isPa
     );
 }
 export default React.memo(ScheduleMatchRow);
+

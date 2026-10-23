@@ -1,3 +1,4 @@
+import { officialName, OfficialRole } from '../utils/officialAssignments';
 import { subscribeCourtReadiness } from '../utils/socketSubscriptions';
 import ScheduleMatchRow, { QuickScore } from './ScheduleMatchRow';
 
@@ -83,27 +84,11 @@ const GlobalSchedule: React.FC = () => {
     return map;
   }, [teams, categories]);
 
-  const renderOfficial = useCallback((playerId: string | null) => {
-    if (!playerId) return '-';
-    if (playerId === 'Staff') {
-        return (
-            <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full flex-shrink-0 bg-red-500"></span>
-                <span className="font-bold text-red-600 dark:text-red-400 uppercase tracking-wider text-[10px]">Staff</span>
-            </div>
-        );
-    }
-    const info = playerInfoMap.get(playerId);
-    if (!info) return 'Inconnu';
-
-    const { player, team, category } = info;
-    return (
-        <div className="flex items-center gap-2">
-            <span style={{ backgroundColor: category.color }} className="w-3 h-3 rounded-full flex-shrink-0" title={category.name}></span>
-            <span>{player.firstName} {player.lastName.charAt(0)}. <span className="text-gray-500 dark:text-gray-400">({team.name})</span></span>
-        </div>
-    );
-  }, [playerInfoMap]);
+  const renderOfficial = useCallback((id: string | null, role: OfficialRole = 'Arbitre') => {
+    if (!id) return '—';
+    const name = officialName(state, id, role);
+    return <span className={id === 'Staff' ? 'font-semibold text-red-600 dark:text-red-400' : ''}>{name}</span>;
+  }, [state.teams, state.officials]);
   
   const getCategoryForTeam = (teamId: string): Category | undefined => {
     const team = getTeam(teamId);
@@ -376,7 +361,7 @@ const GlobalSchedule: React.FC = () => {
                 </thead>
                 <tbody>
                 {matchesBySession.length > 0 ? (
-                    matchesBySession.map(([sessionKey, sessionMatches]) => {
+                    matchesBySession.map(([sessionKey, sessionMatches], sessionIndex) => {
                         const sessionNum = sessionKey === 'unscheduled' ? -1 : Number(sessionKey);
                         const isPast = currentSession !== null && sessionNum !== -1 && sessionNum < currentSession;
                         const isCurrent = currentSession !== null && sessionNum !== -1 && sessionNum === currentSession;
@@ -386,13 +371,14 @@ const GlobalSchedule: React.FC = () => {
                         const expanded = !complete || (expandedSessions[sessionKey] ?? false);
                         return (
                             <React.Fragment key={`session-${sessionKey}`}>
-                                <tr className={`${isCurrent ? 'bg-blue-100 dark:bg-blue-900/50' : isPast ? 'bg-gray-50 dark:bg-gray-800' : 'bg-gray-100 dark:bg-gray-700'}`}>
-                                <td colSpan={8} className="px-4 py-2">
+                                {sessionIndex>0&&<tr aria-hidden="true" className="global-session-gap"><td colSpan={8}/></tr>}
+                                <tr className={`global-session-heading ${isCurrent ? 'bg-blue-100 dark:bg-blue-900/50' : isPast ? 'bg-gray-50 dark:bg-gray-800' : 'bg-gray-100 dark:bg-gray-700'}`}>
+                                <td colSpan={8} className="px-3 py-3">
                                     <button type="button" aria-expanded={expanded} onClick={() => setExpandedSessions(prev => ({ ...prev, [sessionKey]: !expanded }))}
                                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg font-bold text-sm mb-2 ${
                                             isCurrent
                                                 ? 'bg-blue-600 text-white shadow-lg ring-2 ring-blue-400'
-                                                : isPast ? 'bg-gray-200 dark:bg-gray-700 text-gray-500' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                                                : isPast ? 'bg-slate-600 text-white' : 'bg-slate-800 text-white'
                                         }`}
                                     >
                                         <span>{sessionKey === 'unscheduled' ? 'Non Planifié' : `Session ${sessionKey}`}</span>
@@ -487,4 +473,5 @@ const GlobalSchedule: React.FC = () => {
 };
 
 export default GlobalSchedule;
+
 

@@ -211,3 +211,10 @@
   .appearance-settings { display: none !important; }
   .appearance-organizer { --ui-bg: #fff !important; --ui-panel: #fff !important; --ui-text: #111 !important; --ui-muted: #333 !important; }
 }
+
+
+/* Repères des sessions du calendrier global, y compris les sessions repliées. */
+.global-session-heading > td { border-top: 4px solid var(--ui-accent, #2563eb); border-bottom: 2px solid #64748b; }
+.global-session-heading button { margin-bottom: 0; min-height: 44px; letter-spacing: .025em; }
+.global-session-gap > td { height: 14px; padding: 0; background: #e2e8f0; }
+.dark .global-session-gap > td { background: #0f172a; }

@@ -1,3 +1,4 @@
+import { officialName } from '../utils/officialAssignments';
 import { finalMatchStartIssue } from '../utils/finalMatchSafety';
 import { subscribeCourtReadiness } from '../utils/socketSubscriptions';
 import React, { useState, useMemo, useEffect } from 'react';
@@ -411,6 +412,10 @@ const FinalPhaseManager: React.FC = () => {
                                             </div>
                                         </div>
 
+                                        <div className="text-xs text-gray-500 space-y-1 mb-2">
+                                            {selectedCategory?.isRefereeMandatory && <p>Arbitrage : {officialName(state, match.refereeId || 'Staff', 'Arbitre')}</p>}
+                                            {selectedCategory?.isScorerMandatory && <p>Marque : {officialName(state, match.scorerId || 'Staff', 'Marqueur')}</p>}
+                                        </div>
                                         {/* Equipe 1 */}
                                         <div className={`flex justify-between items-center p-2 rounded-lg ${
                                             match.winnerId === team1?.id ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-black' :
@@ -672,18 +677,14 @@ const FinalPhaseManager: React.FC = () => {
                                                                 {match.category.isRefereeMandatory && (
                                                                     <div className="flex items-center gap-1">
                                                                         <div className="w-2 h-2 rounded-full bg-red-400" />
-                                                                        <span>{match.refereeId && match.refereeId !== 'Staff'
-                                                                            ? (teams.find(t => t.id === match.refereeId)?.name || 'Staff')
-                                                                            : 'Arbitre'}
+                                                                        <span>{officialName(state, match.refereeId || 'Staff', 'Arbitre')}
                                                                         </span>
                                                                     </div>
                                                                 )}
                                                                 {match.category.isScorerMandatory && (
                                                                     <div className="flex items-center gap-1">
                                                                         <div className="w-2 h-2 rounded-full bg-red-400" />
-                                                                        <span>{match.scorerId && match.scorerId !== 'Staff'
-                                                                            ? (teams.find(t => t.id === match.scorerId)?.name || 'Staff')
-                                                                            : 'Marqueur'}
+                                                                        <span>{officialName(state, match.scorerId || 'Staff', 'Marqueur')}
                                                                         </span>
                                                                     </div>
                                                                 )}
@@ -974,3 +975,4 @@ const FinalPhaseManager: React.FC = () => {
 };
 
 export default FinalPhaseManager;
+

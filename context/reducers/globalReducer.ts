@@ -61,6 +61,7 @@ export const globalReducer = (state: TournamentState, action: TournamentAction):
 
         return {
             ...migratedConfig,
+            officials: Array.isArray(payload.officials) ? payload.officials : [],
             categories: migratedCategories,
             matches: migratedMatches,
             standings: migratedStandings,
@@ -71,6 +72,7 @@ export const globalReducer = (state: TournamentState, action: TournamentAction):
       return {
         ...state,
         teams: [],
+        officials: [],
         matches: [],
         pools: [],
         finalMatches: {},
@@ -106,6 +108,7 @@ export const globalReducer = (state: TournamentState, action: TournamentAction):
           }
         ],
         teams: [],
+        officials: [],
         matches: [],
         pools: [],
         finalMatches: {},
@@ -141,3 +144,4 @@ export const globalReducer = (state: TournamentState, action: TournamentAction):
       return state;
   }
 };
+

@@ -1,7 +1,7 @@
 {
   "name": "tournoi-pro",
   "productName": "Tournament Manager Pro",
-  "version": "2.4.1",
+  "version": "2.5.0",
   "type": "module",
   "description": "Application de gestion de tournoi",
   "main": "main.cjs",
@@ -75,3 +75,4 @@
     ]
   }
 }
+

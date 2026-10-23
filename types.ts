@@ -1,10 +1,22 @@
 
 export interface Player {
+  finalsReferee?: boolean;
+  finalsScorer?: boolean;
   id: string;
   firstName: string;
   lastName: string;
   gender: 'Homme' | 'Femme';
   roles: ('Joueur' | 'Arbitre' | 'Marqueur')[];
+}
+
+export interface Official {
+  id: string;
+  firstName: string;
+  lastName: string;
+  roles: ('Arbitre' | 'Marqueur')[];
+  finalsReferee: boolean;
+  finalsScorer: boolean;
+  active: boolean;
 }
 
 export interface Team {
@@ -137,6 +149,7 @@ export interface Track {
 }
 
 export interface TournamentState {
+  officials?: Official[];
   appearance?: AppearanceConfig;
   tvMoments?: Partial<Record<TVMoment, TVMomentConfig>>;
   courtConflicts?: CourtConflict[];
@@ -164,6 +177,9 @@ export interface TournamentState {
 }
 
 export type TournamentAction =
+  | { type: 'UPSERT_OFFICIAL'; payload: Official }
+  | { type: 'SET_OFFICIAL_ACTIVE'; payload: { id: string; active: boolean } }
+  | { type: 'REASSIGN_OFFICIALS' }
   | { type: 'SET_STATE'; payload: TournamentState }
   | { type: 'UPDATE_CONFIG'; payload: { 
       appearance?: AppearanceConfig;
@@ -225,3 +241,4 @@ export type TournamentAction =
   | { type: 'SET_TV_ROUND'; payload: { categoryId: string; round: string } }
   | { type: 'CLEAR_DATA' }
   | { type: 'RESET_TOURNAMENT' };
+

@@ -41,6 +41,9 @@ test('réseau : réception durable, conflit, choix PC, redémarrage et prolongat
     let state = { ...structuredClone(initialData), categories: [], teams: [{ id: 'a', categoryId: 'c', name: 'A', players: [] }, { id: 'b', categoryId: 'c', name: 'B', players: [] }], pools: [{ id: 'p', teams: ['a', 'b'] }], matches: [{ id: 'm', team1Id: 'a', team2Id: 'b', poolId: 'p', round: 'Pool', court: 1, sessionNumber: 1, status: 'pending', score1: null, score2: null }], finalMatches: { c: [{ id: 'f', categoryId: 'c', round: 'final', matchNumber: 1, court: 1, team1Id: 'a', team2Id: 'b', status: 'pending', score1: null, score2: null, isReady: true }] }, currentSession: 1 };
     admin.emit('update_state', state);
     await until(async () => (await disk())?.matches[0]?.id === 'm');
+    const official = { id: 'official-windows', firstName: 'Test', lastName: 'Windows', roles: ['Arbitre'], finalsReferee: true, finalsScorer: false, active: true };
+    assert.equal((await send(admin, 'tournament_action', { id: 'add-official-windows', action: { type: 'UPSERT_OFFICIAL', payload: official } })).status, 'received');
+    assert.equal((await disk()).officials[0].lastName, 'Windows');
     const submission = { id: 'fixed-id', matchId: 'm', court: 1, score1: 12, score2: 8, fouls1: 5, fouls2: 9, team1Name: 'A', team2Name: 'B' };
     admin.emit('play_audio', { type: 'timer_pause', session: 1, finals: false, matchIds: ['m'], payload: { timeLeft: 40 } });
     await until(async () => { try { return JSON.parse(await readFile(path.join(dataDir, 'timer_state.json'), 'utf8')).type === 'timer_pause'; } catch { return false; } });
@@ -89,9 +92,11 @@ test('réseau : réception durable, conflit, choix PC, redémarrage et prolongat
     const afterRestart = await connect('court');
     assert.equal((await send(afterRestart, 'court_submit', submission)).status, 'received');
     assert.equal((await disk()).matches[0].score1, 16);
+    assert.equal((await disk()).officials[0].id, 'official-windows');
   } finally {
     sockets.forEach(s => s.close());
     if (child && child.exitCode === null) await stop();
     await rm(dataDir, { recursive: true, force: true });
   }
 });
+
